@@ -9,7 +9,12 @@
    uv run twine upload dist/*
    ```
 
-3. Clean up build artifacts:
+3. Create GitHub release:
+   ```bash
+   gh release create v0.1.0 --title "v0.1.0" --notes "Initial release"
+   ```
+
+4. Clean up build artifacts:
    ```bash
    rm -rf dist/ *.egg-info/
    ```
