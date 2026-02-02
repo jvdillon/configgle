@@ -46,9 +46,7 @@ print(model.hidden_size)  # 512
 
 ## References
 
-configgle differs from these libraries by keeping configuration purely in Python with no external files or DSLs--the config class lives inside the class it configures and doubles as its factory.
-
-Related configuration and experiment management libraries:
+configgle combines Python standard patterns (dataclasses) with hierarchical, class-local configuration. The following libraries span these ideas but none wholly combine them:
 
 - [Fiddle](https://github.com/google/fiddle) - Python-first configuration library for ML
 - [Gin Config](https://github.com/google/gin-config) - Lightweight configuration framework for Python
