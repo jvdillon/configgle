@@ -1,0 +1,226 @@
+[project]
+name = "configgle"
+version = "0.1.0"
+description = "Tools for making configurable Python classes for A/B experiements."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Joshua V. Dillon", email = "jvdillon@gmail.com" },
+]
+license = "Apache-2.0"
+keywords = ["ai", "machine-learning"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "typing_extensions",
+    "wrapt",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.urls]
+Repository = "https://github.com/jvdillon/configgle"
+
+[dependency-groups]
+docs = [
+    "markdown",
+    "pylatexenc",
+    "sphinx",
+]
+git = [
+    "git-filter-repo",
+    "nbstripout-fast",
+]
+ipython = [
+    "gnureadline",
+    "ipdb",
+    "ipython",
+]
+lint = [
+    "basedpyright",
+    "codespell>=2.2.4",
+    "pre-commit>=3.5",
+    "ruff",
+    "vulture",  # checks for unused code
+]
+stubs = [
+]
+test = [
+    "cloudpickle",
+    "pytest",
+    "pytest-cov",
+]
+publish = [
+    "build",
+    "twine",
+]
+dev = [
+    {include-group = "docs"},
+    {include-group = "git"},
+    {include-group = "ipython"},
+    {include-group = "lint"},
+    {include-group = "stubs"},
+    {include-group = "test"},
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["configgle"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-Werror"
+norecursedirs = [".venv", "__pycache__", "*.egg-info"]
+
+[tool.coverage.run]
+omit = [
+    "tests/*",
+    "*/.venv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+fix = true
+show-fixes = true
+line-length = 88
+output-format = "concise"
+target-version = "py311"
+exclude = [".venv", "*.egg-info", ".pytest_cache", "build", "dist"]
+extend-include = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    # Module-level ignores
+    "ANN",     # flake8-annotations - we use pyright for type checking
+    "C90",     # mccabe complexity - one function slightly over threshold
+    "COM812",  # missing trailing comma - conflicts with formatter
+
+    # Docstring rules - not enforcing strict docstring requirements
+    "D100",    # undocumented public module
+    "D101",    # undocumented public class
+    "D102",    # undocumented public method
+    "D103",    # undocumented public function
+    "D104",    # undocumented public package
+    "D105",    # undocumented public magic method
+    "D106",    # undocumented public nested class
+    "D107",    # undocumented public init
+    "D203",    # incorrect blank line before class (conflicts with D211)
+    "D205",    # blank line required between summary line and description
+    "D213",    # multi-line-summary-second-line (conflicts with D212)
+    "D400",    # docstring should end with period
+    "D401",    # docstring imperative mood
+    "D415",    # docstring should end with period
+    "D417",    # missing argument in docstring
+
+    # Style choices
+    "A002",    # function argument shadowing builtin (we use 'repr' as param name)
+    "E501",    # line too long (formatter handles this)
+    "EM101",   # exception must not use string literal
+    "EM102",   # exception must not use f-string literal
+    "ERA001",  # commented-out code (we have intentional examples)
+    "FBT001",  # boolean positional argument
+    "FBT002",  # boolean default positional argument
+    "FBT003",  # boolean positional value in call
+    "INP001",  # implicit namespace package (tests don't need __init__.py)
+    "N806",    # variable should be lowercase (we use Config as variable name)
+    "PLR0912", # too many branches
+    "PLR0913", # too many arguments
+    "PLR0915", # too many statements
+    "PLR2004", # magic value in comparison (common in tests)
+    "RET504",  # unnecessary assignment before return
+    "T201",    # print found (used for debug mode in CopyOnWrite)
+    "TC001",   # move import to type-checking block
+    "TC003",   # move import to type-checking block
+    "TC006",   # runtime-cast-value
+    "TRY003",  # long exception messages
+    "TRY300",  # consider moving to else block
+]
+
+[tool.ruff.lint.isort]
+case-sensitive = false
+combine-as-imports = true
+force-wrap-aliases = true
+split-on-trailing-comma = true
+default-section = "third-party"
+detect-same-package = true
+force-single-line = false
+force-sort-within-sections = false
+from-first = true
+lines-between-types = 1
+lines-after-imports = 2
+known-first-party = ["configgle"]
+no-lines-before = ["future"]
+order-by-type = true
+relative-imports-order = "closest-to-furthest"
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = [
+    "S101",    # use of assert
+    "S301",    # pickle unsafe
+    "SLF001",  # private member access
+]
+
+[tool.basedpyright]
+typeCheckingMode = "recommended"
+extraPaths = ["."]
+exclude = [".venv", "*.egg-info", ".pytest_cache", "build", "dist"]
+ignore = [".venv", "*.egg-info", ".pytest_cache", "build", "dist"]
+pythonPlatform = "Linux"
+pythonVersion = "3.11"
+reportAny = false
+reportCallInDefaultInitializer = false
+reportConstantRedefinition = false
+reportExplicitAny = false
+reportImplicitStringConcatenation = false
+reportIncompatibleMethodOverride = false
+reportMissingSuperCall = false
+reportPrivateLocalImportUsage = false
+reportUnannotatedClassAttribute = false
+reportUnsafeMultipleInheritance = false
+reportUnusedCallResult = false
+reportUnusedImport = false
+
+# Test files have relaxed rules - tests legitimately access private members
+# and use untyped libraries like cloudpickle
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+reportPrivateUsage = false
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+
+[tool.codespell]
+builtin = "clear,rare,code"
+ignore-words-list = "fave,coo,jupyter,arange,iff,wrt,ow,lite,falsy,truthy,ws,deque,numer,wan,warmup"
+skip = "htmlcov,.doctrees,*.pyc,*.ico,*.png,*.jpg,*.PNG,*.inv,*.dot,*.css,.git,.venv,__pycache__,*.egg-info,uv.lock"
+
+[tool.uv]
+package = true
+
+[tool.uv.pip]
+compile-bytecode = true
