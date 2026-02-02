@@ -4,9 +4,7 @@
 
 2. Build and upload:
    ```bash
-   uv sync --group publish
-   uv run python -m build
-   uv run twine upload dist/*
+   uv sync --group publish && uv run python -m build && uv run twine upload dist/*
    ```
 
 3. Create GitHub release:
