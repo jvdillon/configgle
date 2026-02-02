@@ -44,6 +44,19 @@ model = Model.Config(hidden_size=512).setup()
 print(model.hidden_size)  # 512
 ```
 
+## References
+
+configgle differs from these libraries by keeping configuration purely in Python with no external files or DSLs--the config class lives inside the class it configures and doubles as its factory.
+
+Related configuration and experiment management libraries:
+
+- [Fiddle](https://github.com/google/fiddle) - Python-first configuration library for ML
+- [Gin Config](https://github.com/google/gin-config) - Lightweight configuration framework for Python
+- [Sacred](https://github.com/IDSIA/sacred) - Tool to configure, organize, log and reproduce experiments
+- [Hydra](https://github.com/facebookresearch/hydra) - Framework for elegantly configuring complex applications
+- [ml_collections](https://github.com/google/ml_collections) - Python collections designed for ML use cases
+- [OmegaConf](https://github.com/omry/omegaconf) - Flexible hierarchical configuration system
+
 ## License
 
 Apache License 2.0
