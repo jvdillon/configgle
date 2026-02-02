@@ -1,4 +1,4 @@
-# configgle
+# configgle 🤭
 Tools for making configurable Python classes for A/B experiements.
 
 ## License
