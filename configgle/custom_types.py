@@ -51,7 +51,7 @@ class Configurable(Protocol[_T_co]):
 
 @runtime_checkable
 class HasConfig(Protocol[_T]):
-    """Protocol for classes decorated with @auto_config."""
+    """Protocol for classes with a typed Config nested class."""
 
     Config: ClassVar[type[Configurable[_T]]]  # pyright: ignore[reportGeneralTypeIssues]
 
@@ -72,6 +72,6 @@ class RelaxedConfigurable(Configurable[_T], Protocol):
 
 @runtime_checkable
 class HasRelaxedConfig(Protocol[_T]):
-    """Protocol for classes decorated with @auto_config."""
+    """Protocol for classes decorated with @autofig."""
 
     Config: ClassVar[type[RelaxedConfigurable[_T]]]  # pyright: ignore[reportGeneralTypeIssues]

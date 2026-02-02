@@ -8,6 +8,7 @@ from collections.abc import (
 )
 from types import CellType, MethodType
 from typing import (
+    Any,
     ClassVar,
     Self,
     TypeVar,
@@ -74,10 +75,10 @@ class Setupable(metaclass=SetupableMeta):
     setup_with_kwargs: ClassVar[bool] = False
     parent_class: ClassVar[type | None]
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._finalized = False
 
-    def setup(self) -> object:
+    def setup(self) -> Any:
         """Finalize config and instantiate the parent class.
 
         Returns:
@@ -194,7 +195,7 @@ class Setupable(metaclass=SetupableMeta):
 class _Default:
     __slots__: ClassVar[tuple[str, ...]] = ("value",)
 
-    def __init__(self, value: object):
+    def __init__(self, value: object) -> None:
         self.value = value
 
     def __bool__(self) -> bool:
@@ -234,7 +235,7 @@ class _DataclassParams:
         kw_only: bool = True,
         slots: bool = True,
         weakref_slot: bool = True,
-    ):
+    ) -> None:
         self.init = init
         self.repr = repr
         self.eq = eq
@@ -388,12 +389,24 @@ class FigMeta(_DataclassMeta, SetupableMeta):
 
 
 class Fig(Setupable, metaclass=FigMeta):
-    """Dataclass with setup/finalize/update for the nested Config pattern."""
+    """Dataclass with setup/finalize/update for the nested Config pattern.
+
+    Example:
+        >>> class MyClass:
+        ...     class Config(Fig):
+        ...         x: int = 0
+        ...
+        ...     def __init__(self, config: Config) -> None:
+        ...         self.x = config.x
+        ...
+        >>> obj = MyClass.Config(x=1).setup()
+
+    """
 
     __slots__: ClassVar[tuple[str, ...]] = ()
 
 
-_ValueT = TypeVar("_ValueT")
+_ValueT = TypeVar("_ValueT")  # Used internally for _finalize_value
 
 
 def _get_object_attribute_names(obj: object) -> Iterator[str]:

@@ -74,6 +74,7 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["configgle"]
+artifacts = ["configgle/py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

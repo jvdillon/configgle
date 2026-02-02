@@ -46,8 +46,11 @@ print(model.hidden_size)  # 512
 
 ## References
 
-configgle combines Python standard patterns (dataclasses) with hierarchical, class-local configuration. The following libraries span these ideas but none wholly combine them:
+configgle combines Python standard patterns (dataclasses) with hierarchical, class-local configuration.
 
+The following libraries span these ideas but none wholly combine them:
+
+- [Confugue](https://github.com/cifkao/confugue) - Hierarchical configuration with YAML-based object instantiation (most similar to configgle, but uses YAML rather than pure Python)
 - [Fiddle](https://github.com/google/fiddle) - Python-first configuration library for ML
 - [Gin Config](https://github.com/google/gin-config) - Lightweight configuration framework for Python
 - [Sacred](https://github.com/IDSIA/sacred) - Tool to configure, organize, log and reproduce experiments
