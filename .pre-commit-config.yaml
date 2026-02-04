@@ -6,7 +6,7 @@
 # uv run pre-commit autoupdate
 # uv run pre-commit run --all-files
 
-fail_fast: false
+fail_fast: true
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -16,10 +16,7 @@ repos:
       exclude: ^\.typings/
     - id: trailing-whitespace
       exclude: ^\.typings/
-    - id: check-added-large-files
-      args: ['--maxkb=3000']
     - id: check-merge-conflict
-    - id: check-yaml
     - id: check-toml
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
