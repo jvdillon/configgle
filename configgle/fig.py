@@ -139,7 +139,7 @@ class Setupable(Generic[_ParentT], metaclass=SetupableMeta):
         source: DataclassLike | Configurable[object] | None = None,
         *,
         skip_missing: bool = False,
-        **kwargs: object,
+        **kwargs: Any,
     ) -> Self:
         """Update config attributes from source and/or kwargs.
 
