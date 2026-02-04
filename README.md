@@ -58,6 +58,20 @@ The following libraries span these ideas but none wholly combine them:
 - [ml_collections](https://github.com/google/ml_collections) - Python collections designed for ML use cases
 - [OmegaConf](https://github.com/omry/omegaconf) - Flexible hierarchical configuration system
 
+## Citing
+
+If you find our work useful, please consider citing:
+
+```bibtex
+@misc{dillon2026configgle,
+      title={Configgle - Hierarchical experiment configuration and dependency injection using pure Python dataclass factories.},
+      author={Joshua V. Dillon},
+      year={2026},
+      howpublished={Github},
+      url={https://github.com/jvdillon/configgle},
+}
+```
+
 ## License
 
 Apache License 2.0
