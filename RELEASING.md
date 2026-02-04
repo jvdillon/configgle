@@ -1,6 +1,6 @@
 # Releasing to PyPI
 
-1. Update version in `pyproject.toml`
+1. Increment version in `pyproject.toml`
 
 2. Build and upload:
    ```bash
@@ -14,5 +14,5 @@
 
 4. Clean up build artifacts:
    ```bash
-   rm -rf dist/ *.egg-info/
+   rm -rf dist/
    ```
