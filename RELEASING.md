@@ -16,3 +16,5 @@
    ```bash
    rm -rf dist/
    ```
+
+5. Verify successful pypi push: https://pypi.org/simple/configgle/
