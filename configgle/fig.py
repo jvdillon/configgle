@@ -10,8 +10,8 @@ from types import CellType, MethodType
 from typing import (
     Any,
     ClassVar,
+    Generic,
     Self,
-    TypeVar,
     cast,
     dataclass_transform,
 )
@@ -19,7 +19,7 @@ from typing import (
 import copy
 import dataclasses
 
-from typing_extensions import override
+from typing_extensions import TypeVar, override
 
 from configgle.custom_types import Configurable, DataclassLike
 from configgle.inline import InlineConfig, PartialConfig
@@ -34,6 +34,9 @@ __all__ = [
     "PartialConfig",
     "Setupable",
 ]
+
+
+_ParentT = TypeVar("_ParentT", default=Any)
 
 
 class SetupableMeta(type):
@@ -63,7 +66,7 @@ class SetupableMeta(type):
             cls.__name__ = f"{owner_name}.{name}"
 
 
-class Setupable(metaclass=SetupableMeta):
+class Setupable(Generic[_ParentT], metaclass=SetupableMeta):
     """Base class providing setup/finalize/update capabilities for configs.
 
     When nested inside a parent class, enables the pattern:
@@ -78,7 +81,7 @@ class Setupable(metaclass=SetupableMeta):
     def __init__(self) -> None:
         self._finalized = False
 
-    def setup(self) -> Any:
+    def setup(self) -> _ParentT:
         """Finalize config and instantiate the parent class.
 
         Returns:
@@ -388,7 +391,7 @@ class FigMeta(_DataclassMeta, SetupableMeta):
     """
 
 
-class Fig(Setupable, metaclass=FigMeta):
+class Fig(Setupable[_ParentT], metaclass=FigMeta):
     """Dataclass with setup/finalize/update for the nested Config pattern.
 
     Example:
