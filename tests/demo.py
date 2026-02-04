@@ -16,20 +16,30 @@ class Setupable(Generic[_ParentT]):
 
 
 class SetupableMeta1(type):
-    def __get__(cls: type[_T], obj: object, owner: type[_ParentT]) -> type[_T]:
+    # The following is the same as not having it at all but is here so you can
+    # see the symmetry with other approaches.
+    def __get__(
+        cls: type[_T],
+        obj: object,
+        owner: type[_ParentT],
+    ) -> type[_T]:
         return cls
 
 
 class SetupableMeta2(type):
     def __get__(
-        cls: type[_T], obj: object, owner: type[_ParentT]
+        cls: type[_T],
+        obj: object,
+        owner: type[_ParentT],
     ) -> type[Setupable[_ParentT]]:
         return cls  # pyright: ignore[reportReturnType]
 
 
 class SetupableMeta3(type):
     def __get__(
-        cls: type[_T], obj: object, owner: type[_ParentT]
+        cls: type[_T],
+        obj: object,
+        owner: type[_ParentT],
     ) -> type[_T | Setupable[_ParentT]]:
         return cls
 
