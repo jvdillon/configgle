@@ -1,7 +1,7 @@
 # uv run basedpyright demo.py
 from __future__ import annotations
 
-from typing import Any, Generic, reveal_type
+from typing import Any, Generic, Protocol, reveal_type
 
 from typing_extensions import TypeVar
 
@@ -134,3 +134,47 @@ class Foo3:
 reveal_type(Foo3.Config)
 reveal_type(Foo3.Config().x)  # pyright: ignore[reportAttributeAccessIssue]
 reveal_type(Foo3.Config().setup())
+
+
+# -------------------------------------------------------------------------------
+# IDEA 4: Protocol with __getattr__ to fake merge
+#
+# Result: setup() works, but x becomes Any via __getattr__
+#
+# (This is basically the RelaxedConfig idea.)
+#
+# Type of "Foo4.Config" is "type[ConfigProtocol4[Config, Foo4]]"
+# Type of "Foo4.Config().x" is "Any"
+# Type of "Foo4.Config().setup()" is "Foo4"
+
+
+class ConfigProtocol4(  # pyright: ignore[reportInvalidTypeVarUse]
+    Protocol[_T, _ParentT],
+):
+    """Protocol that has both Config fields (via __getattr__) and setup()."""
+
+    def setup(self) -> _ParentT: ...
+    def __getattr__(self, name: str) -> Any: ...
+
+
+class SetupableMeta4(type):
+    def __get__(
+        cls: type[_T],
+        obj: object,
+        owner: type[_ParentT],
+    ) -> type[ConfigProtocol4[_T, _ParentT]]:
+        return cls  # pyright: ignore[reportReturnType]
+
+
+class Fig4(Setupable[_ParentT], metaclass=SetupableMeta4):
+    pass
+
+
+class Foo4:
+    class Config(Fig4):
+        x: int = 0
+
+
+reveal_type(Foo4.Config)
+reveal_type(Foo4.Config().x)
+reveal_type(Foo4.Config().setup())
