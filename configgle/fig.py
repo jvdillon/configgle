@@ -65,6 +65,10 @@ class SetupableMeta(type):
         if owner_name := getattr(owner, "__name__", ""):
             cls.__name__ = f"{owner_name}.{name}"
 
+    # Ideally we could do:
+    # def __get__(cls: type[_T], obj: object, owner: type[_ParentT]) -> type[_T & Setupable[_ParentT]]:
+    #    return cls
+
 
 class Setupable(Generic[_ParentT], metaclass=SetupableMeta):
     """Base class providing setup/finalize/update capabilities for configs.
