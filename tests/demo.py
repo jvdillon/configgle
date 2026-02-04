@@ -44,6 +44,11 @@ class SetupableMeta3(type):
         return cls
 
 
+# Symmetrically speaking the only one missing is
+# `type[_T & Setupable[_ParentT]]` where `&` is an intersection (merge)
+# operator and in fact that is exactly what we need.
+# ...Too bad it doesn't exist.
+
 # Note: Fig1 is the current choice of configgle.
 
 
