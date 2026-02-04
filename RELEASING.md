@@ -1,6 +1,6 @@
 # Releasing to PyPI
 
-1. Increment version in `pyproject.toml`
+1. Increment version in `pyproject.toml` and `git push` it.
 
 2. Build and upload:
    ```bash
