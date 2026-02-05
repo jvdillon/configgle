@@ -23,7 +23,7 @@ from typing import (
 import copy
 import dataclasses
 
-from typing_extensions import TypeAliasType, TypeIs, TypeVar, override
+from typing_extensions import TypeAliasType, TypeVar, override
 
 
 if TYPE_CHECKING:
@@ -76,8 +76,8 @@ class SetupableMeta(type):
 
     def _parent_class(cls) -> type | None: ...
 
-    def __set_name__(cls, owner: type, name: str) -> None:
-        def _parent_class(cls: SetupableMeta) -> type:
+    def __set_name__(cls, owner: type[_ParentT], name: str) -> None:
+        def _parent_class(cls: SetupableMeta) -> type[_ParentT]:
             del cls
             return owner
 
@@ -89,7 +89,10 @@ class SetupableMeta(type):
         cls: type[_T],
         obj: object,
         owner: type[_ParentT],
-    ) -> type[Intersection[_T, Setupable[_ParentT]]]:
+    ) -> Intersection[
+        type[_T],
+        type[Setupable[_ParentT]],
+    ]:
         return cls
 
 
@@ -444,11 +447,6 @@ def _get_object_attribute_names(obj: object) -> Iterator[str]:
             yield path[0]
 
 
-def _needs_finalization(x: object) -> TypeIs[HasFinalize]:
-    """Check if x has finalize() and is not yet finalized."""
-    return hasattr(x, "finalize") and not getattr(x, "_finalized", False)
-
-
 def _finalize_value(value: _ValueT) -> _ValueT:
     """Recursively finalize nested Fig instances, preserving container types.
 
@@ -462,8 +460,7 @@ def _finalize_value(value: _ValueT) -> _ValueT:
       finalized_value: Finalized copy with all nested configs finalized.
 
     """
-    if _needs_finalization(value):
-        # Dynamic dispatch to finalize() checked by _needs_finalization
+    if isinstance(value, HasFinalize) and not getattr(value, "_finalized", False):
         return value.finalize()  # ty: ignore[invalid-return-type]
 
     # Skip classes and types - they don't need finalization
