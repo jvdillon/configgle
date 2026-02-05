@@ -111,7 +111,7 @@ def autofig(
         )
 
         Config.__set_name__(cls_, "Config")
-        cls_.Config = Config  # pyright: ignore[reportAttributeAccessIssue]
+        cls_.Config = Config  # pyright: ignore[reportAttributeAccessIssue]  # ty: ignore[unresolved-attribute]
 
         return cls_  # pyright: ignore[reportReturnType]
 

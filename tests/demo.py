@@ -51,7 +51,7 @@ class SetupableMeta2(type):
         obj: object,
         owner: type[_ParentT],
     ) -> type[Setupable[_ParentT]]:
-        return cls  # pyright: ignore[reportReturnType]
+        return cls  # pyright: ignore[reportReturnType]  # ty: ignore[invalid-return-type]
 
 
 class SetupableMeta3(type):
@@ -151,7 +151,7 @@ class Foo3:
 
 
 reveal_type(Foo3.Config)
-reveal_type(Foo3.Config().x)  # pyright: ignore[reportAttributeAccessIssue]
+reveal_type(Foo3.Config().x)  # pyright: ignore[reportAttributeAccessIssue]  # ty: ignore[possibly-missing-attribute]
 reveal_type(Foo3.Config().setup())
 
 
@@ -340,7 +340,7 @@ reveal_type(Foo7.Config().setup())
 def is_setupable(
     cls: type[_T],
     parent: type[_ParentT],
-) -> TypeIs[type[Setupable[_ParentT]]]:  # pyright: ignore[reportGeneralTypeIssues]
+) -> TypeIs[type[Setupable[_ParentT]]]:  # pyright: ignore[reportGeneralTypeIssues]  # ty: ignore[invalid-type-guard-definition]
     del cls, parent
     return True
 
@@ -374,7 +374,7 @@ if is_setupable(Foo8.Config, Foo8):
 class ConfigFor9(Generic[_T]):
     """Tells type checker setup() returns _T."""
 
-    def setup(self) -> _T: ...
+    def setup(self) -> _T: ...  # ty: ignore[empty-body]
     def __getattr__(self, name: str) -> Any: ...
 
 
@@ -385,7 +385,7 @@ class Configurable9(Generic[_T]):
 
 
 def has_config(cls: type[_T]) -> type[Configurable9[_T]]:
-    return cls  # pyright: ignore[reportReturnType]
+    return cls  # pyright: ignore[reportReturnType]  # ty: ignore[invalid-return-type]
 
 
 @has_config

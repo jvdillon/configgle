@@ -16,6 +16,8 @@ from typing_extensions import override
 if TYPE_CHECKING:
     from configgle.custom_types import Configurable, DataclassLike
 
+from configgle.custom_types import HasFinalize, HasSetup
+
 
 __all__ = ["InlineConfig", "PartialConfig"]
 
@@ -71,9 +73,9 @@ class InlineConfig(Generic[_T]):
         """
         r = self.finalize()
         # Dynamic dispatch to setup() on args that may have it
-        args = [v.setup() if hasattr(v, "setup") else v for v in r._args]  # noqa: SLF001  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType,reportUnknownVariableType]
-        kwargs = {  # pyright: ignore[reportUnknownVariableType]
-            k: v.setup() if hasattr(v, "setup") else v  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
+        args = [v.setup() if isinstance(v, HasSetup) else v for v in r._args]  # noqa: SLF001
+        kwargs = {
+            k: v.setup() if isinstance(v, HasSetup) else v
             for k, v in r._kwargs.items()  # noqa: SLF001
         }
         return r.func(*args, **kwargs)
@@ -87,9 +89,9 @@ class InlineConfig(Generic[_T]):
         """
         r = copy.copy(self)
         # Dynamic dispatch to finalize() on args that may have it
-        r._args = [v.finalize() if hasattr(v, "finalize") else v for v in r._args]  # noqa: SLF001  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
+        r._args = [v.finalize() if isinstance(v, HasFinalize) else v for v in r._args]  # noqa: SLF001
         r._kwargs = {  # noqa: SLF001
-            k: v.finalize() if hasattr(v, "finalize") else v  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
+            k: v.finalize() if isinstance(v, HasFinalize) else v
             for k, v in r._kwargs.items()  # noqa: SLF001
         }
         r._finalized = True  # noqa: SLF001

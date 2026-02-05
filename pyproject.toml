@@ -37,6 +37,7 @@ lint = [
     "codespell>=2.2.4",
     "pre-commit>=3.5",
     "ruff>=0.8",
+    "ty",
     "vulture",  # checks for unused code
 ]
 stubs = [
@@ -207,6 +208,18 @@ reportMissingTypeStubs = false
 reportUnknownMemberType = false
 reportUnknownVariableType = false
 reportUnknownArgumentType = false
+
+[tool.ty.environment]
+python-version = "3.11"
+
+# Test files have relaxed rules - tests use @autofig decorator which adds
+# .Config dynamically, and intentionally test error paths
+[[tool.ty.overrides]]
+include = ["tests/**"]
+
+[tool.ty.overrides.rules]
+# @autofig adds .Config at runtime, invisible to static analysis
+unresolved-attribute = "ignore"
 
 [tool.codespell]
 builtin = "clear,rare,code"

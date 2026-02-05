@@ -238,7 +238,7 @@ class CopyOnWrite(wrapt.ObjectProxy, Generic[_T]):  # pyright: ignore[reportMiss
         cache_key = f"__item_{key!r}"
         child: CopyOnWrite[Any] | None = self._self_children.get(cache_key)
         if child is None:
-            actual = cast("object", self.__wrapped__[key])  # pyright: ignore[reportIndexIssue]
+            actual = cast("object", self.__wrapped__[key])  # pyright: ignore[reportIndexIssue]  # ty: ignore[not-subscriptable]
             child = CopyOnWrite(
                 actual,
                 parent=self,
@@ -265,7 +265,7 @@ class CopyOnWrite(wrapt.ObjectProxy, Generic[_T]):  # pyright: ignore[reportMiss
 
         # Copy-on-write: copy before mutating
         self._copy()
-        self.__wrapped__[key] = actual_value  # pyright: ignore[reportIndexIssue]
+        self.__wrapped__[key] = actual_value  # pyright: ignore[reportIndexIssue]  # ty: ignore[invalid-assignment]
 
     def __delitem__(self, key: object) -> None:
         if self._self_debug:
@@ -279,7 +279,7 @@ class CopyOnWrite(wrapt.ObjectProxy, Generic[_T]):  # pyright: ignore[reportMiss
 
         # Copy-on-write: copy before mutating
         self._copy()
-        del self.__wrapped__[key]  # pyright: ignore[reportIndexIssue]
+        del self.__wrapped__[key]  # pyright: ignore[reportIndexIssue]  # ty: ignore[not-subscriptable]
 
     # -------------------------------------------------------------------------
     # Method calls - copy before calling mutating methods

@@ -78,7 +78,7 @@ def recursively_iterate_over_object_descendants(
                 v,
                 recurse=recurse,
                 seen=seen,
-                path=(*path, k),  # pyright: ignore[reportUnknownArgumentType]
+                path=(*path, k),  # pyright: ignore[reportUnknownArgumentType]  # ty: ignore[invalid-argument-type]
             )
     elif isinstance(value, AbstractSet):
         for i, item in enumerate(value):

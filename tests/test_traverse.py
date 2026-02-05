@@ -336,7 +336,7 @@ def test_recurse_matches_root():
 def test_recurse_matches_containers():
     """Test filtering for container types."""
     data = {"a": [1, 2], "b": [3, 4]}
-    results: list[tuple[tuple[int | str, ...], list[int]]] = [
+    results: list[tuple[tuple[int | str, ...], list[int]]] = [  # ty: ignore[invalid-assignment]
         (p, v)
         for p, v in recursively_iterate_over_object_descendants(data)
         if isinstance(v, list)

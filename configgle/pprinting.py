@@ -178,6 +178,10 @@ class FigPrinter(_PrettyPrinter):
             sort_dicts=sort_dicts,
             underscore_numbers=underscore_numbers,
         )
+        # Explicitly set inherited private attrs for type checking
+        # (parent sets these same values, but type checkers don't see it)
+        self._indent_per_level: int = indent
+        self._width: int = width
         self._finalize = finalize
         self._scrub_memory_address = (
             _SCRUB_MEMORY_ADDRESS_FN if scrub_memory_address else None
@@ -231,7 +235,7 @@ class FigPrinter(_PrettyPrinter):
         ):
             try:
                 obj = copy.deepcopy(obj)
-                obj = obj.finalize()
+                obj = obj.finalize()  # ty: ignore[invalid-assignment]
             except Exception as e:  # noqa: BLE001
                 warnings.warn(str(e), stacklevel=2)
         return obj
@@ -250,7 +254,7 @@ class FigPrinter(_PrettyPrinter):
         indent += len(cls_name) + 1
         items = [
             (f.name, getattr(obj, f.name))
-            for f in dataclasses.fields(obj)  # pyright: ignore[reportArgumentType]
+            for f in dataclasses.fields(obj)  # pyright: ignore[reportArgumentType]  # ty: ignore[invalid-argument-type]
             if f.repr
         ]
 
@@ -274,7 +278,7 @@ class FigPrinter(_PrettyPrinter):
         """Override to use fixed indent and put each parameter on its own line."""
         if not self._extra_compact:
             # PrettyPrinter private method
-            super()._format_namespace_items(  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
+            super()._format_namespace_items(  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType]  # ty: ignore[unresolved-attribute]
                 items,
                 stream,
                 indent,
@@ -292,8 +296,7 @@ class FigPrinter(_PrettyPrinter):
 
         item_indent, base_indent_val = _get_level_indents(
             level,
-            # PrettyPrinter private attribute
-            self._indent_per_level,  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType,reportUnknownArgumentType]
+            self._indent_per_level,
         )
         base_indent = " " * base_indent_val
 
@@ -425,10 +428,9 @@ class FigPrinter(_PrettyPrinter):
         # Keep short sequences on one line regardless of nesting depth
         # (content_width doesn't include indent, so short tuples stay compact even when deeply nested)
         # For longer sequences, check if they fit within the available width
-        # PrettyPrinter private attribute _width has unknown type
-        return (  # pyright: ignore[reportUnknownVariableType]
+        return (
             content_width < self._short_sequence_max_width
-            or indent + content_width + allowance <= self._width  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
+            or indent + content_width + allowance <= self._width
         )
 
     def _format_items_multiline(
@@ -444,8 +446,7 @@ class FigPrinter(_PrettyPrinter):
 
         item_indent, base_indent_val = _get_level_indents(
             level,
-            # PrettyPrinter private attribute
-            self._indent_per_level,  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType,reportUnknownArgumentType]
+            self._indent_per_level,
         )
         indent_str = " " * item_indent
 

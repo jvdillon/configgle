@@ -11,6 +11,7 @@ from typing import (
     Any,
     ClassVar,
     Generic,
+    Protocol,
     Self,
     cast,
     dataclass_transform,
@@ -19,12 +20,18 @@ from typing import (
 import copy
 import dataclasses
 
-from typing_extensions import TypeVar, override
+from typing_extensions import TypeIs, TypeVar, override
 
-from configgle.custom_types import Configurable, DataclassLike
+from configgle.custom_types import Configurable, DataclassLike, HasFinalize
 from configgle.inline import InlineConfig, PartialConfig
 from configgle.pprinting import pformat
 from configgle.traverse import recursively_iterate_over_object_descendants
+
+
+class _IPythonPrinter(Protocol):
+    """Protocol for IPython's RepresentationPrinter."""
+
+    def text(self, text: str) -> None: ...
 
 
 __all__ = [
@@ -52,7 +59,7 @@ class SetupableMeta(type):
 
     @property
     def parent_class(cls) -> type | None:
-        return cls._parent_class()
+        return cls._parent_class()  # ty: ignore[missing-argument]
 
     def _parent_class(cls) -> type | None: ...
 
@@ -61,7 +68,7 @@ class SetupableMeta(type):
             del cls
             return owner
 
-        cls._parent_class = MethodType(_parent_class, cls)
+        cls._parent_class = MethodType(_parent_class, cls)  # ty: ignore[invalid-assignment]
         if owner_name := getattr(owner, "__name__", ""):
             cls.__name__ = f"{owner_name}.{name}"
 
@@ -179,7 +186,7 @@ class Setupable(Generic[_ParentT], metaclass=SetupableMeta):
 
         return self
 
-    def _repr_pretty_(self, p: object, cycle: bool) -> None:
+    def _repr_pretty_(self, p: _IPythonPrinter, cycle: bool) -> None:
         """IPython pretty printer hook for rich display in notebooks.
 
         Args:
@@ -188,15 +195,10 @@ class Setupable(Generic[_ParentT], metaclass=SetupableMeta):
 
         """
         if cycle:
-            # p is IPython's RepresentationPrinter, typed as object for optional dep
-            p.text(  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
-                f"{type(self).__name__}(...)",
-            )
+            p.text(f"{type(self).__name__}(...)")
             return
 
-        p.text(  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType]
-            pformat(self),
-        )
+        p.text(pformat(self))
 
 
 class _Default:
@@ -438,7 +440,7 @@ def _get_object_attribute_names(obj: object) -> Iterator[str]:
             yield path[0]
 
 
-def _needs_finalization(x: object) -> bool:
+def _needs_finalization(x: object) -> TypeIs[HasFinalize]:
     """Check if value needs finalization.
 
     Returns:
@@ -465,7 +467,7 @@ def _finalize_value(value: _ValueT) -> _ValueT:
     """
     if _needs_finalization(value):
         # Dynamic dispatch to finalize() checked by _needs_finalization
-        return value.finalize()  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType,reportUnknownVariableType]
+        return value.finalize()  # ty: ignore[invalid-return-type]
 
     # Skip classes and types - they don't need finalization
     if isinstance(value, type):
@@ -475,7 +477,7 @@ def _finalize_value(value: _ValueT) -> _ValueT:
         finalized_items: list[object] = [_finalize_value(v) for v in value]
         if isinstance(value, tuple):
             if type(value) is tuple:
-                return tuple(finalized_items)  # pyright: ignore[reportReturnType]
+                return tuple(finalized_items)  # pyright: ignore[reportReturnType]  # ty: ignore[invalid-return-type]
             # Namedtuple needs unpacking
             return type(value)(*finalized_items)  # pyright: ignore[reportArgumentType]
         finalized = finalized_items
