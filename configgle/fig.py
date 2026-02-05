@@ -71,8 +71,17 @@ class SetupableMeta(type):
         if owner_name := getattr(owner, "__name__", ""):
             cls.__name__ = f"{owner_name}.{name}"
 
-    # Ideally we could do:
-    # def __get__(cls: type[_T], obj: object, owner: type[_ParentT]) -> type[_T & Setupable[_ParentT]]:
+    # Ideally we could do the following. It would enable the return type of
+    # `setup` to be not `Any` and without requiring the user pass the parent
+    # class to the `Generic` `Setupable` base.
+    # However, this feature fundamentally requires type intersections and these
+    # are not yet supported.
+    #
+    # def __get__(
+    #   cls: type[_T],
+    #   obj: object,
+    #   owner: type[_ParentT],
+    # ) -> type[_T & Setupable[_ParentT]]:
     #    return cls
 
 
