@@ -186,13 +186,7 @@ class Setupable(Generic[_ParentT], metaclass=SetupableMeta):
         return self
 
     def _repr_pretty_(self, p: _IPythonPrinter, cycle: bool) -> None:
-        """IPython pretty printer hook for rich display in notebooks.
-
-        Args:
-          p: IPython RepresentationPrinter instance.
-          cycle: True if a reference cycle is detected.
-
-        """
+        """IPython pretty printer hook for rich display in notebooks."""
         if cycle:
             p.text(f"{type(self).__name__}(...)")
             return
@@ -400,14 +394,14 @@ class Fig(Setupable[_ParentT], metaclass=FigMeta):
     """Dataclass with setup/finalize/update for the nested Config pattern.
 
     Example:
-        >>> class MyClass:
-        ...     class Config(Fig):
-        ...         x: int = 0
-        ...
-        ...     def __init__(self, config: Config) -> None:
-        ...         self.x = config.x
-        ...
-        >>> obj = MyClass.Config(x=1).setup()
+      >>> class MyClass:
+      ...     class Config(Fig):
+      ...         x: int = 0
+      ...
+      ...     def __init__(self, config: Config) -> None:
+      ...         self.x = config.x
+      ...
+      >>> obj = MyClass.Config(x=1).setup()
 
     """
 
@@ -418,13 +412,7 @@ _ValueT = TypeVar("_ValueT")  # Used internally for _finalize_value
 
 
 def _get_object_attribute_names(obj: object) -> Iterator[str]:
-    """Get attribute names from an object via __slots__ or __dict__.
-
-    Yields:
-      name: Attribute name (excluding special attributes like __weakref__,
-        __dict__, and _finalized).
-
-    """
+    """Yield attribute names, excluding __weakref__, __dict__, and _finalized."""
     for path, _ in recursively_iterate_over_object_descendants(
         obj,
         recurse=lambda path, _: len(path) <= 1,
@@ -440,28 +428,21 @@ def _get_object_attribute_names(obj: object) -> Iterator[str]:
 
 
 def _needs_finalization(x: object) -> TypeIs[HasFinalize]:
-    """Check if value needs finalization.
-
-    Returns:
-      needs_finalization: True if x has a finalize() method and either has no
-        _finalized attribute or has _finalized=False.
-
-    """
+    """Check if x has finalize() and is not yet finalized."""
     return hasattr(x, "finalize") and not getattr(x, "_finalized", False)
 
 
 def _finalize_value(value: _ValueT) -> _ValueT:
-    """Recursively finalize values containing Fig instances.
+    """Recursively finalize nested Fig instances, preserving container types.
 
-    Uses traversal to discover all Fig instances in nested structures
-    (sequences, mappings, sets, objects with __slots__/__dict__) and finalizes them.
-    Preserves original container types.
+    Traverses sequences, mappings, sets, and objects with __slots__/__dict__
+    to discover and finalize all Fig instances.
 
     Args:
       value: Value to finalize recursively.
 
     Returns:
-      finalized_value: Finalized copy of the value with all nested configs finalized.
+      finalized_value: Finalized copy with all nested configs finalized.
 
     """
     if _needs_finalization(value):

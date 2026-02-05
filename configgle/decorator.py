@@ -43,39 +43,30 @@ def autofig(
     require_defaults: bool = True,
     kw_only: bool = True,
 ) -> type[HasRelaxedConfig[_T]] | Callable[[type[_T]], type[HasRelaxedConfig[_T]]]:
-    """Decorator that inspects a class's __init__ method and creates a nested
-    Config dataclass (subclassing Fig) with the same parameters.
+    """Create a nested Config dataclass from __init__ parameters.
 
-    The Config class gets:
-    - parent_class property (via SetupMeta)
-    - setup() method to instantiate parent class via kwargs unpacking
-    - finalize() for derived defaults
-    - update() for config merging
-
-    The original __init__ signature is preserved. Config.setup() unpacks
-    the config fields as kwargs.
+    The Config class gets parent_class (via SetupMeta), setup() to instantiate
+    the parent class via kwargs unpacking, finalize() for derived defaults, and
+    update() for config merging.
 
     Args:
-        cls: The class to decorate (when used without arguments).
-        require_defaults: If True, all Config fields must have defaults.
-        kw_only: If True, all Config fields are keyword-only.
+      cls: The class to decorate (when used without arguments).
+      require_defaults: If True, all Config fields must have defaults.
+      kw_only: If True, all Config fields are keyword-only.
+
+    Returns:
+      decorated: The class with a nested Config dataclass attached.
 
     Example:
-        @autofig
-        class Foo:
-            def __init__(self, x: int, y: str = "default"):
-                self.x = x
-                self.y = y
+      @autofig
+      class Foo:
+          def __init__(self, x: int, y: str = "default"):
+              self.x = x
+              self.y = y
 
-        # Now you can use:
-        config = Foo.Config(x=10, y="hello")
-        foo = config.setup()  # Creates Foo(x=10, y="hello")
-
-        # Or with arguments:
-        @autofig(require_defaults=True, kw_only=True)
-        class Bar:
-            def __init__(self, x: int = 0):
-                self.x = x
+      # Now you can use:
+      config = Foo.Config(x=10, y="hello")
+      foo = config.setup()  # Creates Foo(x=10, y="hello")
 
     """
 

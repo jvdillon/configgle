@@ -230,6 +230,7 @@ class FigPrinter(_PrettyPrinter):
         return repr_, readable, recursive
 
     def _try_to_finalize(self, obj: _T) -> _T:
+        """Deep-copy and finalize obj if it is an unfinalized Configurable."""
         if (
             self._finalize
             and isinstance(obj, Configurable)
@@ -491,33 +492,14 @@ class FigPrinter(_PrettyPrinter):
 
 
 def _get_level_indents(level: int, indent_per_level: int) -> tuple[int, int]:
-    """Calculate item and base indent for a given level.
-
-    Args:
-      level: Current nesting level.
-      indent_per_level: Spaces per indent level.
-
-    Returns:
-      item_indent: Indent for items.
-      base_indent: Indent for base closing delimiter.
-
-    """
+    """Return (item_indent, base_indent) for a given nesting level."""
     item_indent = indent_per_level * (level + 1)
     base_indent = item_indent - indent_per_level
     return item_indent, base_indent
 
 
 def _collapse_multiline_value(formatted_value: str, max_width: int) -> str:
-    """Collapse a multiline formatted value to a single line if short enough.
-
-    Args:
-      formatted_value: The formatted string (possibly multiline).
-      max_width: Maximum width for collapsing.
-
-    Returns:
-      collapsed_value: Either the original or collapsed version.
-
-    """
+    """Collapse multiline value to a single line if short enough."""
     if "\n" not in formatted_value:
         return formatted_value
 
@@ -574,16 +556,7 @@ def _filter_non_default_items(
     obj: object,
     items: list[tuple[str, object]],
 ) -> list[tuple[str, object]]:
-    """Filter out items that have default values.
-
-    Args:
-      obj: The dataclass instance being formatted.
-      items: List of (name, value) tuples for all fields.
-
-    Returns:
-      filtered_items: List of (name, value) tuples with non-default values only.
-
-    """
+    """Filter out items whose values match the default-constructed instance."""
     try:
         # Get the class and instantiate a default instance
         cls = type(obj)
@@ -603,6 +576,7 @@ def _filter_non_default_items(
 
 
 def _make_scrub() -> Callable[[str], str]:
+    """Build a function that replaces memory addresses with a fixed placeholder."""
     n = len(str(lambda: None)[:-1].split(" at 0x")[-1])
     pattern = re.compile(rf"0x[a-f0-9]{{{n}}}")
     # Fun fact: 0x0defaced is a prime number.
