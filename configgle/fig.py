@@ -36,7 +36,7 @@ __all__ = [
 ]
 
 
-_ParentT = TypeVar("_ParentT", default=Any)
+_ParentT = TypeVar("_ParentT", default=object)
 
 
 class _IPythonPrinter(Protocol):
