@@ -194,7 +194,7 @@ class CopyOnWrite(wrapt.ObjectProxy, Generic[_T]):  # pyright: ignore[reportMiss
         # Unwrap CopyOnWrite values
         actual_value: object
         if isinstance(value, CopyOnWrite):
-            cow_value = cast("CopyOnWrite[Any]", value)
+            cow_value = cast(CopyOnWrite[Any], value)
             actual_value = cow_value.__wrapped__
             # Track parent relationship
             self._self_children[key] = cow_value
@@ -238,7 +238,7 @@ class CopyOnWrite(wrapt.ObjectProxy, Generic[_T]):  # pyright: ignore[reportMiss
         cache_key = f"__item_{key!r}"
         child: CopyOnWrite[Any] | None = self._self_children.get(cache_key)
         if child is None:
-            actual = cast("object", self.__wrapped__[key])  # pyright: ignore[reportIndexIssue]  # ty: ignore[not-subscriptable]
+            actual = cast(object, self.__wrapped__[key])  # pyright: ignore[reportIndexIssue]  # ty: ignore[not-subscriptable]
             child = CopyOnWrite(
                 actual,
                 parent=self,
@@ -255,7 +255,7 @@ class CopyOnWrite(wrapt.ObjectProxy, Generic[_T]):  # pyright: ignore[reportMiss
         # Unwrap CopyOnWrite values
         actual_value: object
         if isinstance(value, CopyOnWrite):
-            actual_value = cast("CopyOnWrite[Any]", value).__wrapped__
+            actual_value = cast(CopyOnWrite[Any], value).__wrapped__
         else:
             actual_value = value
 

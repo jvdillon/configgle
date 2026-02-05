@@ -1,5 +1,7 @@
 """Configgle: Tools for making configurable Python classes for A/B experiments."""
 
+from __future__ import annotations
+
 from configgle.copy_on_write import CopyOnWrite
 from configgle.custom_types import (
     Configurable,
@@ -9,12 +11,8 @@ from configgle.custom_types import (
     RelaxedConfigurable,
 )
 from configgle.decorator import autofig
-from configgle.fig import (
-    Fig,
-    InlineConfig,
-    PartialConfig,
-    Setupable,
-)
+from configgle.fig import Fig, Setupable
+from configgle.inline import InlineConfig, PartialConfig
 from configgle.pprinting import pformat, pprint
 
 

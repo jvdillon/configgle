@@ -1,3 +1,5 @@
+"""Dataclass metaclasses and Setupable base for the nested Config pattern."""
+
 from __future__ import annotations
 
 from collections.abc import (
@@ -23,7 +25,6 @@ import dataclasses
 from typing_extensions import TypeIs, TypeVar, override
 
 from configgle.custom_types import Configurable, DataclassLike, HasFinalize
-from configgle.inline import InlineConfig, PartialConfig
 from configgle.pprinting import pformat
 from configgle.traverse import recursively_iterate_over_object_descendants
 
@@ -37,8 +38,6 @@ class _IPythonPrinter(Protocol):
 __all__ = [
     "Dataclass",
     "Fig",
-    "InlineConfig",
-    "PartialConfig",
     "Setupable",
 ]
 
@@ -110,7 +109,7 @@ class Setupable(Generic[_ParentT], metaclass=SetupableMeta):
             kwargs = {
                 f.name: getattr(config, f.name)
                 for f in dataclasses.fields(
-                    cast("DataclassLike", cast("object", config)),
+                    cast(DataclassLike, cast(object, config)),
                 )
             }
             return cls(**kwargs)
@@ -330,7 +329,7 @@ class _DataclassMeta(type):
     ) -> _DataclassMeta:
         cls = super().__new__(mcls, name, bases, attrs)
         if classcell := attrs.get("__classcell__"):
-            cls.__classcell__ = cast("CellType", classcell)
+            cls.__classcell__ = cast(CellType, classcell)
         if "__slots__" in cls.__dict__:
             return cls
         kwargs = _DataclassParams.create(
@@ -350,7 +349,7 @@ class _DataclassMeta(type):
 
         if require_defaults:
             current_annotations = cast(
-                "dict[str, object]",
+                dict[str, object],
                 attrs.get("__annotations__", {}),
             )
             for field in dataclasses.fields(cls):  # pyright: ignore[reportArgumentType]
@@ -366,7 +365,7 @@ class _DataclassMeta(type):
                     )
 
         cls.__dataclass_params__ = kwargs
-        cls = cast("_DataclassMeta", cls)
+        cls = cast(_DataclassMeta, cls)
         return cls
 
 

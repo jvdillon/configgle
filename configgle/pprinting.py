@@ -1,5 +1,7 @@
 """Pretty printing utilities for Fig config objects."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from pprint import PrettyPrinter as _PrettyPrinter
 from typing import IO, Protocol, TypeVar

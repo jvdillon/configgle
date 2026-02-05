@@ -46,17 +46,20 @@ print(model.hidden_size)  # 512
 
 ## References
 
-configgle combines Python standard patterns (dataclasses) with hierarchical, class-local configuration.
+Why another config library? There are great options out there, but they either
+focus more on YAML or wrapper objects. The goal with configgle is a UX that's
+just simple Python--standard dataclasses, hierarchical, and class-local. No
+external files, no new syntax to learn.
 
 The following libraries span these ideas but none wholly combine them:
 
+- [Hydra](https://github.com/facebookresearch/hydra) - Framework for elegantly configuring complex applications
+- [OmegaConf](https://github.com/omry/omegaconf) - Flexible hierarchical configuration system
 - [Confugue](https://github.com/cifkao/confugue) - Hierarchical configuration with YAML-based object instantiation (most similar to configgle, but uses YAML rather than pure Python)
 - [Fiddle](https://github.com/google/fiddle) - Python-first configuration library for ML
 - [Gin Config](https://github.com/google/gin-config) - Lightweight configuration framework for Python
 - [Sacred](https://github.com/IDSIA/sacred) - Tool to configure, organize, log and reproduce experiments
-- [Hydra](https://github.com/facebookresearch/hydra) - Framework for elegantly configuring complex applications
 - [ml_collections](https://github.com/google/ml_collections) - Python collections designed for ML use cases
-- [OmegaConf](https://github.com/omry/omegaconf) - Flexible hierarchical configuration system
 
 ## Citing
 
