@@ -10,6 +10,7 @@ from collections.abc import (
 )
 from types import CellType, MethodType
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
     Generic,
@@ -22,7 +23,19 @@ from typing import (
 import copy
 import dataclasses
 
-from typing_extensions import TypeIs, TypeVar, override
+from typing_extensions import TypeAliasType, TypeIs, TypeVar, override
+
+
+if TYPE_CHECKING:
+    # Dummy code until ty_extensions and basedpyright have a working Intersection.
+    _First = TypeVar("_First")
+    _Second = TypeVar("_Second")
+    Intersection = TypeAliasType(
+        "Intersection",
+        _First,
+        type_params=(_First, _Second),
+    )
+
 
 from configgle.custom_types import Configurable, DataclassLike, HasFinalize
 from configgle.pprinting import pformat
@@ -36,6 +49,7 @@ __all__ = [
 ]
 
 
+_T = TypeVar("_T")
 _ParentT = TypeVar("_ParentT", default=object)
 
 
@@ -71,18 +85,12 @@ class SetupableMeta(type):
         if owner_name := getattr(owner, "__name__", ""):
             cls.__name__ = f"{owner_name}.{name}"
 
-    # Ideally we could do the following. It would enable the return type of
-    # `setup` to be not `Any` and without requiring the user pass the parent
-    # class to the `Generic` `Setupable` base.
-    # However, this feature fundamentally requires type intersections and these
-    # are not yet supported.
-    #
-    # def __get__(
-    #   cls: type[_T],
-    #   obj: object,
-    #   owner: type[_ParentT],
-    # ) -> type[_T & Setupable[_ParentT]]:
-    #    return cls
+    def __get__(
+        cls: type[_T],
+        obj: object,
+        owner: type[_ParentT],
+    ) -> type[Intersection[_T, Setupable[_ParentT]]]:
+        return cls
 
 
 class Setupable(Generic[_ParentT], metaclass=SetupableMeta):

@@ -39,6 +39,7 @@ lint = [
     "pre-commit>=3.5",
     "ruff>=0.8",
     "ty",
+    # "ty_extensions",
     "vulture",  # checks for unused code
 ]
 stubs = [
