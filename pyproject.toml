@@ -33,6 +33,7 @@ debug = [
     "scipy",
 ]
 lint = [
+    "basedtyping>=0.1.10",
     "basedpyright>=1.10",
     "codespell>=2.2.4",
     "pre-commit>=3.5",

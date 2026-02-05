@@ -398,3 +398,66 @@ reveal_type(Foo9)
 reveal_type(Foo9.Config)  # pyright: ignore[reportGeneralTypeIssues]
 reveal_type(Foo9.Config().x)  # pyright: ignore[reportGeneralTypeIssues]
 reveal_type(Foo9.Config().setup())  # pyright: ignore[reportGeneralTypeIssues]
+
+
+# -------------------------------------------------------------------------------
+# IDEA 10: TypeIs intersection trick
+#
+# PEP 742 specifies that TypeIs narrows to the intersection of the declared
+# type and the TypeIs target. By using two successive TypeIs assertions, we
+# can build an intersection type that has both Config fields and a typed
+# setup() return.
+#
+# Two requirements for this to work:
+#   1. _ParentT must NOT default to Any (use object instead), because Any is
+#      bidirectionally compatible and makes the type checker consider Config as
+#      already satisfying Setupable[Foo10] — turning the narrow into a no-op.
+#   2. Setupable[Foo10] must be asserted FIRST — pyright resolves method
+#      conflicts using left-to-right precedence in intersections.
+#
+# See: https://discuss.python.org/t/best-way-to-emulate-type-hint-intersection-of-generics/104511/9
+#
+# Result: WORKS!
+#
+# Type of "o" is "<subclass of Setupable10[Foo10] and Config>"
+# Type of "o.x" is "int"
+# Type of "o.setup()" is "Foo10"
+
+
+def supports_t(o: object, tp: type[_T]) -> TypeIs[_T]:
+    """Unconditionally returns True; used purely for TypeIs narrowing."""
+    del o, tp
+    return True
+
+
+_ParentT10 = TypeVar("_ParentT10", default=object)
+
+
+class Setupable10(Generic[_ParentT10]):
+    def setup(self) -> _ParentT10:
+        raise NotImplementedError
+
+
+class Fig10(Setupable10[_ParentT10]):
+    pass
+
+
+class Foo10:
+    class Config(Fig10):
+        x: int = 0
+
+
+# Baseline (without trick): setup() returns object (not Any)
+reveal_type(Foo10.Config)
+reveal_type(Foo10.Config().x)
+reveal_type(Foo10.Config().setup())
+
+
+# With TypeIs intersection trick (Setupable FIRST for method precedence):
+def intersect10(o: object) -> object:
+    assert supports_t(o, Setupable10[Foo10])  # noqa: S101
+    assert supports_t(o, Foo10.Config)  # noqa: S101
+    reveal_type(o)  # "<subclass of Setupable10[Foo10] and Config>"
+    reveal_type(o.x)  # "int"
+    reveal_type(o.setup())  # "Foo10"
+    return o
