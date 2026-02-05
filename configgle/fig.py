@@ -29,12 +29,6 @@ from configgle.pprinting import pformat
 from configgle.traverse import recursively_iterate_over_object_descendants
 
 
-class _IPythonPrinter(Protocol):
-    """Protocol for IPython's RepresentationPrinter."""
-
-    def text(self, text: str) -> None: ...
-
-
 __all__ = [
     "Dataclass",
     "Fig",
@@ -43,6 +37,12 @@ __all__ = [
 
 
 _ParentT = TypeVar("_ParentT", default=Any)
+
+
+class _IPythonPrinter(Protocol):
+    """Protocol for IPython's RepresentationPrinter."""
+
+    def text(self, text: str) -> None: ...
 
 
 class SetupableMeta(type):

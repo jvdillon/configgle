@@ -7,11 +7,13 @@ from configgle.custom_types import (
     Configurable,
     DataclassLike,
     HasConfig,
+    HasFinalize,
     HasRelaxedConfig,
+    HasSetup,
     RelaxedConfigurable,
 )
 from configgle.decorator import autofig
-from configgle.fig import Fig, Setupable
+from configgle.fig import Dataclass, Fig, Setupable
 from configgle.inline import InlineConfig, PartialConfig
 from configgle.pprinting import pformat, pprint
 
@@ -19,10 +21,13 @@ from configgle.pprinting import pformat, pprint
 __all__ = [
     "Configurable",
     "CopyOnWrite",
+    "Dataclass",
     "DataclassLike",
     "Fig",
     "HasConfig",
+    "HasFinalize",
     "HasRelaxedConfig",
+    "HasSetup",
     "InlineConfig",
     "PartialConfig",
     "RelaxedConfigurable",
