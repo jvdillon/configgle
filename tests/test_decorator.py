@@ -20,7 +20,7 @@ def test_basic_decorator():
     assert config.y == "hello"
     assert config.z == 3.14
 
-    foo = config.setup()
+    foo = config.make()
     assert foo.x == 42
     assert foo.y == "hello"
     assert foo.z == 3.14
@@ -59,7 +59,7 @@ def test_with_defaults():
     assert config.name == "test"
     assert config.count == 5
 
-    bar = config.setup()
+    bar = config.make()
     assert bar.items == [1, 2, 3]
     assert bar.name == "test"
     assert bar.count == 5
@@ -87,7 +87,7 @@ def test_require_defaults():
 
     # Should work - require_defaults=False allows parameters without defaults
     config = NoDefaults.Config(x=42)
-    instance = config.setup()
+    instance = config.make()
     assert instance.x == 42
 
 

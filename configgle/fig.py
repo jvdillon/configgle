@@ -1,4 +1,4 @@
-"""Dataclass metaclasses and Setupable base for the nested Config pattern."""
+"""Dataclass metaclasses and Maker base for the nested Config pattern."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from typing import (
     Self,
     cast,
     dataclass_transform,
+    runtime_checkable,
 )
 
 import copy
@@ -37,15 +38,27 @@ if TYPE_CHECKING:
     )
 
 
-from configgle.custom_types import Configurable, DataclassLike, HasFinalize
+from configgle.custom_types import DataclassLike, Makeable
 from configgle.pprinting import pformat
 from configgle.traverse import recursively_iterate_over_object_descendants
+
+
+@runtime_checkable
+class _HasFinalize(Protocol):
+    """Non-generic protocol for isinstance checks in _finalize_value.
+
+    Using the generic Makeable protocol in isinstance causes basedpyright to
+    leak Unknown into the negative branch. This simple non-generic protocol
+    avoids that issue.
+    """
+
+    def finalize(self) -> Self: ...
 
 
 __all__ = [
     "Dataclass",
     "Fig",
-    "Setupable",
+    "Maker",
 ]
 
 
@@ -59,7 +72,7 @@ class _IPythonPrinter(Protocol):
     def text(self, text: str) -> None: ...
 
 
-class SetupableMeta(type):
+class MakerMeta(type):
     """Metaclass that tracks the nested parent class for the Config pattern.
 
     Uses MethodType to bind the parent class reference, making parent_class
@@ -77,7 +90,7 @@ class SetupableMeta(type):
     def _parent_class(cls) -> type | None: ...
 
     def __set_name__(cls, owner: type[_ParentT], name: str) -> None:
-        def _parent_class(cls: SetupableMeta) -> type[_ParentT]:
+        def _parent_class(cls: MakerMeta) -> type[_ParentT]:
             del cls
             return owner
 
@@ -91,27 +104,27 @@ class SetupableMeta(type):
         owner: type[_ParentT],
     ) -> Intersection[
         type[_T],
-        type[Setupable[_ParentT]],
+        type[Maker[_ParentT]],
     ]:
         return cls
 
 
-class Setupable(Generic[_ParentT], metaclass=SetupableMeta):
-    """Base class providing setup/finalize/update capabilities for configs.
+class Maker(Generic[_ParentT], metaclass=MakerMeta):
+    """Base class providing make/finalize/update capabilities for configs.
 
     When nested inside a parent class, enables the pattern:
-        instance = ParentClass.Config(...).setup()
+        instance = ParentClass.Config(...).make()
 
     """
 
     __slots__: ClassVar[tuple[str, ...]] = ("_finalized",)
-    setup_with_kwargs: ClassVar[bool] = False
+    make_with_kwargs: ClassVar[bool] = False
     parent_class: ClassVar[type | None]
 
     def __init__(self) -> None:
         self._finalized = False
 
-    def setup(self) -> _ParentT:
+    def make(self) -> _ParentT:
         """Finalize config and instantiate the parent class.
 
         Returns:
@@ -124,8 +137,8 @@ class Setupable(Generic[_ParentT], metaclass=SetupableMeta):
         config = self.finalize()
         cls = type(config).parent_class
         if cls is None:
-            raise ValueError("Setupable class must be nested in a parent class")
-        if getattr(type(config), "setup_with_kwargs", False):
+            raise ValueError("Maker must be nested in a parent class")
+        if getattr(type(config), "make_with_kwargs", False):
             kwargs = {
                 f.name: getattr(config, f.name)
                 for f in dataclasses.fields(
@@ -162,7 +175,7 @@ class Setupable(Generic[_ParentT], metaclass=SetupableMeta):
 
     def update(
         self,
-        source: DataclassLike | Configurable[object] | None = None,
+        source: DataclassLike | Makeable[object] | None = None,
         *,
         skip_missing: bool = False,
         **kwargs: Any,
@@ -400,18 +413,18 @@ class Dataclass(metaclass=DataclassMeta):
 
 
 @dataclass_transform(kw_only_default=True)
-class FigMeta(_DataclassMeta, SetupableMeta):
+class FigMeta(_DataclassMeta, MakerMeta):
     """Combined metaclass for Fig.
 
     This metaclass combines _DataclassMeta (automatic dataclass conversion) and
-    SetupableMeta (parent class tracking) to enable the nested Config pattern where
-    Config classes can call .setup() to instantiate their parent class.
+    MakerMeta (parent class tracking) to enable the nested Config pattern where
+    Config classes can call .make() to instantiate their parent class.
 
     """
 
 
-class Fig(Setupable[_ParentT], metaclass=FigMeta):
-    """Dataclass with setup/finalize/update for the nested Config pattern.
+class Fig(Maker[_ParentT], metaclass=FigMeta):
+    """Dataclass with make/finalize/update for the nested Config pattern.
 
     Example:
       >>> class MyClass:
@@ -421,7 +434,7 @@ class Fig(Setupable[_ParentT], metaclass=FigMeta):
       ...     def __init__(self, config: Config) -> None:
       ...         self.x = config.x
       ...
-      >>> obj = MyClass.Config(x=1).setup()
+      >>> obj = MyClass.Config(x=1).make()
 
     """
 
@@ -460,7 +473,7 @@ def _finalize_value(value: _ValueT) -> _ValueT:
       finalized_value: Finalized copy with all nested configs finalized.
 
     """
-    if isinstance(value, HasFinalize) and not getattr(value, "_finalized", False):
+    if isinstance(value, _HasFinalize) and not getattr(value, "_finalized", False):
         return value.finalize()  # ty: ignore[invalid-return-type]
 
     # Skip classes and types - they don't need finalization

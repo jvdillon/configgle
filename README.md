@@ -13,7 +13,7 @@ python -m pip install configgle
 from configgle import Fig
 
 class Model:
-    class Config(Fig):
+    class Config(Fig["Model"]):
         hidden_size: int = 256
         num_layers: int = 4
 
@@ -24,7 +24,7 @@ class Model:
 config = Model.Config(hidden_size=512)
 
 # Instantiate the parent class
-model = config.setup()
+model = config.make()
 print(model.config.hidden_size)  # 512
 ```
 
@@ -40,7 +40,7 @@ class Model:
         self.num_layers = num_layers
 
 # Config is auto-generated from __init__ signature
-model = Model.Config(hidden_size=512).setup()
+model = Model.Config(hidden_size=512).make()
 print(model.hidden_size)  # 512
 ```
 

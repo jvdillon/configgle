@@ -45,7 +45,7 @@ def autofig(
 ) -> type[HasRelaxedConfig[_T]] | Callable[[type[_T]], type[HasRelaxedConfig[_T]]]:
     """Create a nested Config dataclass from __init__ parameters.
 
-    The Config class gets parent_class (via SetupMeta), setup() to instantiate
+    The Config class gets parent_class (via MakerMeta), make() to instantiate
     the parent class via kwargs unpacking, finalize() for derived defaults, and
     update() for config merging.
 
@@ -66,7 +66,7 @@ def autofig(
 
       # Now you can use:
       config = Foo.Config(x=10, y="hello")
-      foo = config.setup()  # Creates Foo(x=10, y="hello")
+      foo = config.make()  # Makes Foo(x=10, y="hello")
 
     """
 
@@ -94,7 +94,7 @@ def autofig(
             (Fig,),
             {
                 "__annotations__": annotations,
-                "setup_with_kwargs": True,
+                "make_with_kwargs": True,
                 **defaults_,
             },
             require_defaults=require_defaults,

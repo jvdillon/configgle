@@ -139,8 +139,8 @@ class CopyOnWrite(Generic[_T]):
 **Example:**
 ```python
 def process(v: object) -> object:
-    if hasattr(v, "setup"):
-        return v.setup()  # ty error: Object of type `object` is not callable
+    if hasattr(v, "make"):
+        return v.make()  # ty error: Object of type `object` is not callable
     return v
 ```
 

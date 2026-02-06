@@ -23,24 +23,24 @@ def test_inline_config():
     assert cfg._args == [1, 2]
     assert cfg._kwargs == {}
 
-    # Test setup
-    result = cfg.setup()
+    # Test make
+    result = cfg.make()
     assert result == 3
 
     # Test with kwargs
     cfg2 = InlineConfig(add, a=5, b=10)
-    assert cfg2.setup() == 15
+    assert cfg2.make() == 15
 
     # Test with mixed args and kwargs
     cfg3 = InlineConfig(add, 3, b=7)
-    assert cfg3.setup() == 10
+    assert cfg3.make() == 10
 
 
-def test_inline_config_with_nested_setup():
-    """Test InlineConfig with nested setups."""
+def test_inline_config_with_nested_make():
+    """Test InlineConfig with nested makes."""
 
     class SimpleConfig:
-        """Simple config without setup (not a Fig)."""
+        """Simple config without make (not a Fig)."""
 
         def __init__(self, value: int):
             self.value = value
@@ -51,12 +51,12 @@ def test_inline_config_with_nested_setup():
     def multiply(cfg: SimpleConfig) -> int:
         return cfg.value * 2
 
-    # Test with object that has finalize but not setup
+    # Test with object that has finalize but not make
     cfg = SimpleConfig(5)
     inline_cfg = InlineConfig(multiply, cfg)
 
-    # Setup should call finalize on nested objects
-    result = inline_cfg.setup()
+    # Make should call finalize on nested objects
+    result = inline_cfg.make()
     assert result == 10
 
 
@@ -64,11 +64,14 @@ def test_inline_config_finalize():
     """Test InlineConfig.finalize."""
 
     class SimpleConfig:
-        """Simple config with finalize."""
+        """Simple config with finalize and make."""
 
         def __init__(self, x: int):
             self.x = x
             self._finalized = False
+
+        def make(self) -> object:
+            return self.finalize()
 
         def finalize(self) -> Self:
             new = copy.copy(self)
@@ -99,7 +102,7 @@ def test_inline_config_attr_access():
     assert cfg.b == 10
     assert cfg._kwargs == {"a": 5, "b": 10}
 
-    result = cfg.setup()
+    result = cfg.make()
     assert result == 15
 
 
@@ -143,7 +146,7 @@ def test_partial_config():
 
     # Create partial with some args
     cfg = PartialConfig(multiply, 2, c=10)
-    partial_func = cfg.setup()
+    partial_func = cfg.make()
 
     # Should create a functools.partial
     result = partial_func(b=3)

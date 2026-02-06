@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, MutableMapping, MutableSequence
-from typing import TYPE_CHECKING, Generic, Self, TypeVar
+from typing import TYPE_CHECKING, Generic, Protocol, Self, TypeVar, runtime_checkable
 
 import copy
 import dataclasses
@@ -14,9 +14,17 @@ from typing_extensions import override
 
 
 if TYPE_CHECKING:
-    from configgle.custom_types import Configurable, DataclassLike
+    from configgle.custom_types import DataclassLike, Makeable
 
-from configgle.custom_types import HasFinalize, HasSetup
+
+@runtime_checkable
+class _HasMake(Protocol):
+    def make(self) -> object: ...
+
+
+@runtime_checkable
+class _HasFinalize(Protocol):
+    def finalize(self) -> Self: ...
 
 
 __all__ = ["InlineConfig", "PartialConfig"]
@@ -29,8 +37,8 @@ _T = TypeVar("_T")
 class InlineConfig(Generic[_T]):
     """Config wrapper for arbitrary callables with deferred execution.
 
-    Stores a function and its arguments, calling them when setup() is invoked.
-    Supports nested configs in args/kwargs which are finalized/setup recursively.
+    Stores a function and its arguments, calling them when make() is invoked.
+    Supports nested configs in args/kwargs which are finalized/made recursively.
 
     """
 
@@ -64,7 +72,7 @@ class InlineConfig(Generic[_T]):
         self._args = list(args)
         self._kwargs = kwargs  # Must be last.
 
-    def setup(self) -> _T:
+    def make(self) -> _T:
         """Finalize and invoke the wrapped function.
 
         Returns:
@@ -72,10 +80,10 @@ class InlineConfig(Generic[_T]):
 
         """
         r = self.finalize()
-        # Dynamic dispatch to setup() on args that may have it
-        args = [v.setup() if isinstance(v, HasSetup) else v for v in r._args]  # noqa: SLF001
+        # Dynamic dispatch to make() on args that may have it
+        args = [v.make() if isinstance(v, _HasMake) else v for v in r._args]  # noqa: SLF001
         kwargs = {
-            k: v.setup() if isinstance(v, HasSetup) else v
+            k: v.make() if isinstance(v, _HasMake) else v
             for k, v in r._kwargs.items()  # noqa: SLF001
         }
         return r.func(*args, **kwargs)
@@ -89,9 +97,9 @@ class InlineConfig(Generic[_T]):
         """
         r = copy.copy(self)
         # Dynamic dispatch to finalize() on args that may have it
-        r._args = [v.finalize() if isinstance(v, HasFinalize) else v for v in r._args]  # noqa: SLF001
+        r._args = [v.finalize() if isinstance(v, _HasFinalize) else v for v in r._args]  # noqa: SLF001
         r._kwargs = {  # noqa: SLF001
-            k: v.finalize() if isinstance(v, HasFinalize) else v
+            k: v.finalize() if isinstance(v, _HasFinalize) else v
             for k, v in r._kwargs.items()  # noqa: SLF001
         }
         r._finalized = True  # noqa: SLF001
@@ -99,7 +107,7 @@ class InlineConfig(Generic[_T]):
 
     def update(
         self,
-        source: DataclassLike | Configurable[object] | None = None,
+        source: DataclassLike | Makeable[object] | None = None,
         *,
         skip_missing: bool = False,
         **kwargs: object,

@@ -11,7 +11,7 @@ import pytest
 
 from configgle.fig import (
     Fig,
-    Setupable,
+    Maker,
     _DataclassParams,
     _Default,
     _get_object_attribute_names,
@@ -67,7 +67,7 @@ def test_cant_set_unknown_field():
     cfg = Parent.Config()
     with pytest.raises(AttributeError):
         cfg.nonexistent_field = 1  # pyright: ignore[reportAttributeAccessIssue]
-    assert isinstance(cfg.setup(), Parent)
+    assert isinstance(cfg.make(), Parent)
 
 
 def test_cloudpickle():
@@ -93,7 +93,7 @@ def test_pickle_parent_class_restored():
 
     # Verify parent_class is restored after unpickling
     assert type(cfg_).parent_class is Parent
-    assert cfg_.setup().__class__ is Parent
+    assert cfg_.make().__class__ is Parent
 
 
 def test_cloudpickle_parent_class_restored():
@@ -108,7 +108,7 @@ def test_cloudpickle_parent_class_restored():
 
     # Verify parent_class is restored after unpickling
     assert type(cfg_).parent_class is Child
-    assert cfg_.setup().__class__ is Child
+    assert cfg_.make().__class__ is Child
 
 
 def test_pickle_nested_class_with_parent():
@@ -122,7 +122,7 @@ def test_pickle_nested_class_with_parent():
 
     # Verify we can create and use the config
     cfg = Parent_pickled.Config(a=3.14, b=2.71)
-    instance = cfg.setup()
+    instance = cfg.make()
     assert instance.__class__ is Parent_pickled
     # Note: Parent.Config.finalize() sets a=-1, so we check the finalized value
     assert instance.a == -1
@@ -140,7 +140,7 @@ def test_cloudpickle_nested_class_with_parent():
 
     # Verify we can create and use the config
     cfg = Child_pickled.Config(a=1.0, b=2.0, c=3.0j)
-    instance = cfg.setup()
+    instance = cfg.make()
     assert instance.__class__ is Child_pickled
 
 
@@ -150,14 +150,14 @@ def test_mutable():
     assert cfg.b == 2  # pyright: ignore[reportAttributeAccessIssue]
 
 
-def test_setup_without_parent():
-    """Test Setupable.setup() raises error when no parent class."""
-    setup = Setupable()
+def test_make_without_parent():
+    """Test Maker.make() raises error when no parent class."""
+    maker = Maker()
     with pytest.raises(
         ValueError,
-        match="Setupable class must be nested in a parent class",
+        match="Maker must be nested in a parent class",
     ):
-        setup.setup()
+        maker.make()
 
 
 def test_default_bool_and_repr():
@@ -230,7 +230,7 @@ def test_dataclass_params_create():
     assert new2.frozen is False  # From existing
 
 
-def test_dataclass_setup_update():
+def test_fig_update():
     """Test Fig.update method."""
 
     class TestConfig(Fig):
@@ -259,7 +259,7 @@ def test_dataclass_setup_update():
     assert cfg4.y == 200.0  # From source
 
 
-def test_dataclass_setup_finalize():
+def test_fig_finalize():
     """Test Fig finalize creates copy."""
 
     class TestConfig(Fig):
@@ -312,7 +312,7 @@ def test_dataclass_params_create_missing_value():
     assert new.repr is True
 
 
-def test_dataclass_setup_update_skip_missing():
+def test_fig_update_skip_missing():
     """Test Fig.update with skip_missing=True."""
 
     class TestConfig(Fig):

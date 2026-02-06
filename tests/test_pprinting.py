@@ -21,7 +21,7 @@ class MockConfigurable:
         self.value = value
         self._finalized = finalized
 
-    def setup(self) -> Self:
+    def make(self) -> Self:
         return self
 
     def finalize(self) -> Self:
@@ -66,13 +66,13 @@ def test_pformat_finalize():
     """Test pformat with finalize option."""
     cfg = MockConfigurable(42, finalized=False)
 
-    # With finalize=True (default) - should warn about unfinalized object
+    # With finalize=True (default) - MockConfigurable satisfies Makeable,
+    # so it gets finalized automatically (no warning).
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         result = pformat(cfg, finalize=True)
         assert "MockConfigurable" in result
-        assert len(w) == 1
-        assert "unfinalized" in str(w[0].message).lower()
+        assert len(w) == 0
 
     # With finalize=False - should not warn
     with warnings.catch_warnings(record=True) as w:
@@ -147,7 +147,7 @@ def test_pretty_printer_format_with_unfinalized_warning():
         def __init__(self):
             self._finalized = False
 
-        def setup(self):
+        def make(self):
             return self
 
         def finalize(self) -> Self:

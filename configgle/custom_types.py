@@ -6,24 +6,23 @@ from typing import (
     ClassVar,
     Protocol,
     Self,
-    TypeVar,
     runtime_checkable,
 )
 
 import dataclasses
 
+from typing_extensions import TypeVar
+
 
 __all__ = [
-    "Configurable",
     "DataclassLike",
     "HasConfig",
-    "HasFinalize",
     "HasRelaxedConfig",
-    "HasSetup",
+    "Makeable",
     "RelaxedConfigurable",
 ]
 
-_T_co = TypeVar("_T_co", covariant=True)
+_T_co = TypeVar("_T_co", covariant=True, default=object)
 _T = TypeVar("_T")
 
 
@@ -52,30 +51,16 @@ class DataclassLike(Protocol):
 
 
 @runtime_checkable
-class HasFinalize(Protocol):
-    """Protocol for objects with a finalize() method."""
-
-    def finalize(self) -> Self: ...
-
-
-@runtime_checkable
-class HasSetup(Protocol):
-    """Protocol for objects with a setup() method."""
-
-    def setup(self) -> object: ...
-
-
-@runtime_checkable
-class Configurable(Protocol[_T_co]):
-    """Protocol for config objects with setup/finalize/update methods."""
+class Makeable(Protocol[_T_co]):
+    """Protocol for objects with make(), finalize(), and update() methods."""
 
     _finalized: bool
 
-    def setup(self) -> _T_co: ...
+    def make(self) -> _T_co: ...
     def finalize(self) -> Self: ...
     def update(
         self,
-        source: DataclassLike | Configurable[object] | None = None,
+        source: DataclassLike | Makeable[object] | None = None,
         *,
         skip_missing: bool = False,
         **kwargs: object,
@@ -86,14 +71,14 @@ class Configurable(Protocol[_T_co]):
 class HasConfig(Protocol[_T]):
     """Protocol for classes with a typed Config nested class."""
 
-    Config: ClassVar[type[Configurable[_T]]]  # pyright: ignore[reportGeneralTypeIssues]
+    Config: ClassVar[type[Makeable[_T]]]  # pyright: ignore[reportGeneralTypeIssues]
 
 
 @runtime_checkable
-class RelaxedConfigurable(Configurable[_T], Protocol):
+class RelaxedConfigurable(Makeable[_T], Protocol):
     """Protocol for auto-generated Config classes.
 
-    Extends Configurable with __init__ and __getattr__ to support
+    Extends Makeable with __init__ and __getattr__ to support
     dynamic field access without requiring suppressions in user code.
     """
 
