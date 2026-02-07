@@ -1,16 +1,16 @@
 [project]
 name = "configgle"
-version = "1.1.0"
+version = "1.1.2"
 description = "Hierarchical experiment configuration and dependency injection using pure Python dataclass factories."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-    { name = "Joshua V. Dillon", email = "jvdillon@gmail.com" },
+    { name = "Joshua V. Dillon" },
 ]
 license = "Apache-2.0"
 keywords = ["ai", "machine-learning"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
@@ -63,6 +63,8 @@ dev = [
 
 [project.urls]
 Repository = "https://github.com/jvdillon/configgle"
+Issues = "https://github.com/jvdillon/configgle/issues"
+Discussions = "https://github.com/jvdillon/configgle/discussions"
 
 [build-system]
 requires = ["hatchling"]
