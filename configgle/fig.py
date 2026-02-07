@@ -64,7 +64,7 @@ __all__ = [
 
 
 _T = TypeVar("_T")
-_ParentT = TypeVar("_ParentT", default=object)
+_ParentT = TypeVar("_ParentT", default=Any)
 
 
 class _IPythonPrinter(Protocol):
@@ -73,24 +73,41 @@ class _IPythonPrinter(Protocol):
     def text(self, text: str) -> None: ...
 
 
+class _MakerParentClassDescriptor:
+    """Descriptor that narrows parent_class return type via Generic inference."""
+
+    def __get__(
+        self,
+        obj: Makeable[_ParentT] | None,
+        owner: type[Makeable[_ParentT]],
+    ) -> type[_ParentT]:
+        return owner._parent_class()  # noqa: SLF001  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType,reportUnknownVariableType]  # ty: ignore[missing-argument]
+
+
 class MakerMeta(type):
-    """Metaclass that tracks the nested parent class for the Config pattern.
+    """Metaclass for the nested Config pattern.
 
-    Uses MethodType to bind the parent class reference, making parent_class
-    immutable while remaining compatible with cloudpickle. This is a standard
-    Python pattern for creating bound methods dynamically.
+    __set_name__ captures the parent class when a Maker is defined as a nested
+    class attribute (e.g., `class Config(Fig):` inside `MyClass`).
 
-    See: https://docs.python.org/3/library/types.html#types.MethodType
+    __get__ narrows the type so that `MyClass.Config` is seen as both the
+    Config type and a `Makeable[MyClass]`, giving `make()` the correct
+    return type.
 
     """
-
-    @property
-    def parent_class(cls) -> type | None:
-        return cls._parent_class()  # ty: ignore[missing-argument]
 
     def _parent_class(cls) -> type | None: ...
 
     def __set_name__(cls, owner: type[_ParentT], name: str) -> None:
+        """Bind the parent class reference when this class is a nested attribute.
+
+        Uses MethodType to make parent_class immutable while remaining
+        compatible with cloudpickle.
+
+        See: https://docs.python.org/3/library/types.html#types.MethodType
+
+        """
+
         def _parent_class(cls: MakerMeta) -> type[_ParentT]:
             del cls
             return owner
@@ -105,7 +122,7 @@ class MakerMeta(type):
         owner: type[_ParentT],
     ) -> Intersection[
         type[_T],
-        type[Maker[_ParentT]],
+        type[Makeable[_ParentT]],
     ]:
         return cls
 
@@ -120,7 +137,13 @@ class Maker(Generic[_ParentT], metaclass=MakerMeta):
 
     __slots__: ClassVar[tuple[str, ...]] = ("_finalized",)
     make_with_kwargs: ClassVar[bool] = False
-    parent_class: ClassVar[type | None]
+    if TYPE_CHECKING:
+
+        @property
+        def parent_class(self) -> type[_ParentT]: ...
+
+    else:
+        parent_class = _MakerParentClassDescriptor()
 
     def __init__(self) -> None:
         self._finalized = False
@@ -136,8 +159,8 @@ class Maker(Generic[_ParentT], metaclass=MakerMeta):
 
         """
         config = self.finalize()
-        cls = type(config).parent_class
-        if cls is None:
+        cls = config.parent_class
+        if cls is None:  # pyright: ignore[reportUnnecessaryComparison]
             raise ValueError("Maker must be nested in a parent class")
         if getattr(type(config), "make_with_kwargs", False):
             kwargs = {
@@ -147,7 +170,7 @@ class Maker(Generic[_ParentT], metaclass=MakerMeta):
                 )
             }
             return cls(**kwargs)
-        return cls(config)
+        return cls(config)  # pyright: ignore[reportCallIssue]
 
     def finalize(self) -> Self:
         """Create a finalized copy with derived defaults applied.
@@ -471,6 +494,9 @@ class Makes(Generic[_ParentT]):
     """
 
     if TYPE_CHECKING:
+
+        @property
+        def parent_class(self) -> type[_ParentT]: ...
 
         def make(self) -> _ParentT: ...
 

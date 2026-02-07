@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import field
 from typing import Self
 
 import pickle
@@ -9,6 +11,7 @@ from typing_extensions import override
 import cloudpickle
 import pytest
 
+from configgle import InlineConfig, Makeable, PartialConfig
 from configgle.fig import (
     Fig,
     Maker,
@@ -395,6 +398,87 @@ def test_builds_not_in_mro():
     mro_names = [c.__name__ for c in Dog.Config.__mro__]
     assert "Makes" not in mro_names
     assert "Fig" in mro_names
+
+
+# ---------------------------------------------------------------------------
+# Patterns that exercise Makeable covariance + parent_class.
+# Replicates the Base -> Derived -> Composite hierarchy from real usage.
+# ---------------------------------------------------------------------------
+
+
+class Base:
+    """Base class with Config(Fig["Base"])."""
+
+    class Config(Fig["Base"]):
+        x: float = 1.0
+
+    def __init__(self, config: Config) -> None:
+        self.x = config.x
+
+
+class Derived(Base):
+    """Child whose Config uses Makes to re-bind parent_class."""
+
+    class Config(Makes["Derived"], Base.Config):
+        y: float = 2.0
+
+    def __init__(self, config: Config) -> None:
+        super().__init__(config)
+        self.y = config.y
+
+
+class Composite:
+    """Container whose Config has a field typed Makeable[Derived].
+
+    This is the pattern that breaks: Derived.Config inherits from
+    Base.Config, so the inherited parent_class is type[Base],
+    but Makeable[Derived] expects parent_class -> type[Derived].
+    """
+
+    class Config(Fig["Composite"]):
+        part: Makeable[Derived] = field(default_factory=Derived.Config)
+
+    def __init__(self, config: Config) -> None:
+        self.part = config.part.make()
+
+
+def test_makeable_field_with_inherited_config():
+    """Makeable[Derived] field accepts Derived.Config (inherits from Base.Config)."""
+    cfg = Composite.Config()
+    obj = cfg.make()
+    assert isinstance(obj.part, Derived)
+
+
+def test_makeable_field_assignment():
+    """Assigning Derived.Config to a Makeable[Derived] field works."""
+    cfg = Composite.Config()
+    cfg.part = Derived.Config(x=0.1, y=0.2)
+    obj = cfg.make()
+    assert obj.part.x == 0.1
+    assert obj.part.y == 0.2
+
+
+def test_inherited_config_parent_class_is_child():
+    """Makes re-binds parent_class to the child, not the parent."""
+    assert Base.Config.parent_class is Base
+    assert Derived.Config.parent_class is Derived
+
+
+def test_makeable_covariance():
+    """Makeable[Base] should accept Derived.Config (Derived <: Base)."""
+    cfg: Makeable[Base] = Derived.Config()
+    result = cfg.make()
+    assert isinstance(result, Derived)
+    assert isinstance(result, Base)
+
+
+def test_inline_config_satisfies_makeable():
+    """InlineConfig/PartialConfig must satisfy Makeable (no parent_class needed)."""
+    inline: Makeable[int] = InlineConfig(int, "42")
+    assert inline.make() == 42
+
+    partial_cfg: Makeable[Callable[..., int]] = PartialConfig(int, "42")
+    assert partial_cfg.make()() == 42
 
 
 if __name__ == "__main__":

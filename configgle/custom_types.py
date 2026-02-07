@@ -58,6 +58,20 @@ class Makeable(Protocol[_T_co]):
 
     _finalized: bool
 
+    # Ideally this would be a read-only class attribute -- covariant and
+    # accessible on both class and instance. Python's type system has no such
+    # concept, so we pick @property (covariant, instance-only) over the
+    # alternatives:
+    #   - ClassVar: class-accessible but invariant (breaks Makeable[Derived]
+    #     assignable to Makeable[Base]).
+    #   - Custom descriptor with __get__: works on concrete classes but pyright
+    #     doesn't resolve __get__ during protocol structural matching.
+    #   - Final: can't combine with ClassVar or use in protocols.
+    # The tradeoff is that type[Makeable[X]].parent_class doesn't work
+    # through protocol-typed variables. Use a cast for that rare case.
+    @property
+    def parent_class(self) -> type[_T_co] | None: ...
+
     def make(self) -> _T_co: ...
     def finalize(self) -> Self: ...
     def update(

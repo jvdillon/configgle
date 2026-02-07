@@ -44,6 +44,108 @@ model = Model.Config(hidden_size=512).make()
 print(model.hidden_size)  # 512
 ```
 
+## Features
+
+### Type-safe `make()`
+
+`Fig` tracks the parent class automatically. You can use bare `Fig` and
+everything works with no type warnings -- the type parameter defaults to `Any`:
+
+```python
+class Model:
+    class Config(Fig):
+        hidden_size: int = 256
+
+    def __init__(self, config: Config):
+        self.hidden_size = config.hidden_size
+
+model = Model.Config(hidden_size=512).make()
+```
+
+For tighter checking, parameterize with the parent class name and `make()`
+returns the exact type:
+
+```python
+class Model:
+    class Config(Fig["Model"]):
+        hidden_size: int = 256
+
+    def __init__(self, config: Config):
+        self.hidden_size = config.hidden_size
+
+model: Model = Model.Config(hidden_size=512).make()  # returns Model, not object
+```
+
+### Inheritance with `Makes`
+
+When a child class inherits a parent's Config, the `make()` return type would
+normally be the parent. Use `Makes` to re-bind it:
+
+```python
+class Animal:
+    class Config(Fig["Animal"]):
+        name: str = "animal"
+
+    def __init__(self, config: Config):
+        self.name = config.name
+
+class Dog(Animal):
+    class Config(Makes["Dog"], Animal.Config):
+        breed: str = "mutt"
+
+    def __init__(self, config: Config):
+        super().__init__(config)
+        self.breed = config.breed
+
+dog: Dog = Dog.Config(name="Rex", breed="labrador").make()  # returns Dog, not Animal
+```
+
+`Makes` contributes nothing to the MRO at runtime -- it exists purely for the
+type checker. It's a workaround for Python's lack of an `Intersection` type:
+`MakerMeta.__get__` already narrows `Dog.Config` to
+`type[Config] & type[Makeable[Dog]]` at runtime, but there's no way to express
+that statically today. When
+[Intersection](https://github.com/python/typing/issues/213) lands, `Makes`
+will become unnecessary -- configgle is already forward-compatible with that
+change.
+
+### Covariant `Makeable` protocol
+
+`Makeable[T]` is a covariant protocol satisfied by any `Fig`, `InlineConfig`,
+or custom class with `make()`, `finalize()`, and `update()`. Because it's
+covariant, `Makeable[Dog]` is assignable to `Makeable[Animal]`:
+
+```python
+from configgle import Makeable
+
+def train(config: Makeable[Animal]) -> Animal:
+    return config.make()
+
+# All valid:
+train(Animal.Config())
+train(Dog.Config(breed="poodle"))
+```
+
+This makes it easy to write functions that accept any config for a class
+hierarchy without losing type information.
+
+### Nested config finalization
+
+Override `finalize()` to compute derived fields before instantiation. Nested
+configs are finalized recursively:
+
+```python
+class Encoder:
+    class Config(Fig["Encoder"]):
+        c_in: int = 256
+        mlp: MLP.Config = field(default_factory=MLP.Config)
+
+        def finalize(self) -> Self:
+            self = super().finalize()
+            self.mlp.c_in = self.c_in  # propagate dimensions
+            return self
+```
+
 ## References
 
 Why another config library? There are great options out there, but they either

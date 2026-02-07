@@ -42,6 +42,7 @@ class InlineConfig(Generic[_T]):
 
     """
 
+    parent_class: None = dataclasses.field(default=None, init=False, repr=False)
     func: Callable[..., _T]
     _finalized: bool = dataclasses.field(
         default=False,
