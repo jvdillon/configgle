@@ -353,6 +353,42 @@ def test_get_object_attribute_names_filters_int_indices():
     assert names == []
 
 
+class Animal:
+    class Config(Fig["Animal"]):
+        name: str = "animal"
+
+    def __init__(self, config: Config):
+        self.name = config.name
+
+
+class Dog(Animal):
+    class Config(Animal.Config):
+        breed: str = "mutt"
+
+    def __init__(self, config: Config):
+        super().__init__(config)
+        self.breed = config.breed
+
+
+def test_inherited_config_make_returns_child():
+    dog = Dog.Config(name="Rex", breed="labrador").make()
+    assert isinstance(dog, Dog)
+    assert isinstance(dog, Animal)
+    assert dog.name == "Rex"
+    assert dog.breed == "labrador"
+
+
+def test_inherited_config_parent_class_tracks_child():
+    assert Animal.Config.parent_class is Animal
+    assert Dog.Config.parent_class is Dog
+
+
+def test_inherited_config_base_still_makes_parent():
+    animal = Animal.Config(name="Spot").make()
+    assert type(animal) is Animal
+    assert animal.name == "Spot"
+
+
 if __name__ == "__main__":
     import pytest
 
