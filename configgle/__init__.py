@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from configgle.copy_on_write import CopyOnWrite
 from configgle.custom_types import (
+    Configurable,
     DataclassLike,
     HasConfig,
     HasRelaxedConfig,
@@ -17,6 +18,7 @@ from configgle.pprinting import pformat, pprint
 
 
 __all__ = [
+    "Configurable",
     "CopyOnWrite",
     "Dataclass",
     "DataclassLike",

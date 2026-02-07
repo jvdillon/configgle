@@ -6,6 +6,7 @@ from typing import (
     ClassVar,
     Protocol,
     Self,
+    TypeAlias,
     runtime_checkable,
 )
 
@@ -15,6 +16,7 @@ from typing_extensions import TypeVar
 
 
 __all__ = [
+    "Configurable",
     "DataclassLike",
     "HasConfig",
     "HasRelaxedConfig",
@@ -65,6 +67,9 @@ class Makeable(Protocol[_T_co]):
         skip_missing: bool = False,
         **kwargs: object,
     ) -> Self: ...
+
+
+Configurable: TypeAlias = Makeable
 
 
 @runtime_checkable
