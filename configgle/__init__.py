@@ -11,7 +11,7 @@ from configgle.custom_types import (
     RelaxedConfigurable,
 )
 from configgle.decorator import autofig
-from configgle.fig import Dataclass, Fig, Maker
+from configgle.fig import Dataclass, Fig, Maker, Makes
 from configgle.inline import InlineConfig, PartialConfig
 from configgle.pprinting import pformat, pprint
 
@@ -26,6 +26,7 @@ __all__ = [
     "InlineConfig",
     "Makeable",
     "Maker",
+    "Makes",
     "PartialConfig",
     "RelaxedConfigurable",
     "autofig",

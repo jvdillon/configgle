@@ -12,6 +12,7 @@ import pytest
 from configgle.fig import (
     Fig,
     Maker,
+    Makes,
     _DataclassParams,
     _Default,
     _get_object_attribute_names,
@@ -362,7 +363,7 @@ class Animal:
 
 
 class Dog(Animal):
-    class Config(Animal.Config):
+    class Config(Makes["Dog"], Animal.Config):
         breed: str = "mutt"
 
     def __init__(self, config: Config):
@@ -371,7 +372,7 @@ class Dog(Animal):
 
 
 def test_inherited_config_make_returns_child():
-    dog = Dog.Config(name="Rex", breed="labrador").make()
+    dog: Dog = Dog.Config(name="Rex", breed="labrador").make()
     assert isinstance(dog, Dog)
     assert isinstance(dog, Animal)
     assert dog.name == "Rex"
@@ -384,9 +385,16 @@ def test_inherited_config_parent_class_tracks_child():
 
 
 def test_inherited_config_base_still_makes_parent():
-    animal = Animal.Config(name="Spot").make()
+    animal: Animal = Animal.Config(name="Spot").make()
     assert type(animal) is Animal
     assert animal.name == "Spot"
+
+
+def test_builds_not_in_mro():
+    """Makes should not appear in the runtime MRO."""
+    mro_names = [c.__name__ for c in Dog.Config.__mro__]
+    assert "Makes" not in mro_names
+    assert "Fig" in mro_names
 
 
 if __name__ == "__main__":

@@ -59,6 +59,7 @@ __all__ = [
     "Dataclass",
     "Fig",
     "Maker",
+    "Makes",
 ]
 
 
@@ -439,6 +440,50 @@ class Fig(Maker[_ParentT], metaclass=FigMeta):
     """
 
     __slots__: ClassVar[tuple[str, ...]] = ()
+
+
+class Makes(Generic[_ParentT]):
+    """Type-only base for inherited Configs that fixes the make() return type.
+
+    When a Config inherits from a parent Config, the make() return type is
+    the parent's type, not the child's. Use Makes as the first base to
+    re-specify the return type:
+
+        class Animal:
+            class Config(Fig["Animal"]):
+                name: str = "animal"
+            def __init__(self, config: Config):
+                self.name = config.name
+
+        class Dog(Animal):
+            class Config(Makes["Dog"], Animal.Config):
+                breed: str = "mutt"
+
+        dog: Dog = Dog.Config(breed="mutt").make()  # returns Dog, not Animal
+
+    At runtime, Makes["X"] contributes nothing to the MRO — it exists
+    purely for static type checking.
+
+    Workaround for Python's lack of Intersection types. If Intersection
+    types are adopted, MakerMeta.__get__ could potentially narrow the
+    inherited make() return type directly, making this class unnecessary.
+
+    """
+
+    if TYPE_CHECKING:
+
+        def make(self) -> _ParentT: ...
+
+    def __class_getitem__(cls, params: object) -> object:
+        class _NoMroAlias:
+            __origin__ = cls
+            __args__ = (params,)
+
+            @staticmethod
+            def __mro_entries__(bases: object) -> tuple[()]:
+                return ()
+
+        return _NoMroAlias()
 
 
 _ValueT = TypeVar("_ValueT")  # Used internally for _finalize_value
