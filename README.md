@@ -1,5 +1,6 @@
 # configgle🤭
-Tools for making configurable Python classes for A/B experiements.
+Hierarchical configuration using pure Python dataclasses, with typed factory
+methods, covariant protocols, and full inheritance support.
 
 ## Installation
 
@@ -146,22 +147,109 @@ class Encoder:
             return self
 ```
 
-## References
+### `update()` for bulk mutation
 
-Why another config library? There are great options out there, but they either
-focus more on YAML or wrapper objects. The goal with configgle is a UX that's
-just simple Python--standard dataclasses, hierarchical, and class-local. No
-external files, no new syntax to learn.
+Configs support bulk updates from another config, a dict, or keyword arguments:
 
-The following libraries span these ideas but none wholly combine them:
+```python
+cfg = Model.Config(hidden_size=256)
+cfg.update(hidden_size=512, num_layers=8)
 
-- [Hydra](https://github.com/facebookresearch/hydra) - Framework for elegantly configuring complex applications
-- [OmegaConf](https://github.com/omry/omegaconf) - Flexible hierarchical configuration system
-- [Confugue](https://github.com/cifkao/confugue) - Hierarchical configuration with YAML-based object instantiation (most similar to configgle, but uses YAML rather than pure Python)
-- [Fiddle](https://github.com/google/fiddle) - Python-first configuration library for ML
-- [Gin Config](https://github.com/google/gin-config) - Lightweight configuration framework for Python
-- [Sacred](https://github.com/IDSIA/sacred) - Tool to configure, organize, log and reproduce experiments
-- [ml_collections](https://github.com/google/ml_collections) - Python collections designed for ML use cases
+# Or copy from another config (kwargs take precedence):
+cfg.update(other_cfg, num_layers=12)
+```
+
+### `@autofig` for zero-boilerplate configs
+
+When you don't need a hand-written Config, `@autofig` generates one from
+`__init__` (see [Example](#example) above).
+
+### Pickling and cloudpickle
+
+Configs are fully compatible with `pickle` and `cloudpickle`, including the
+parent class reference. This is important for distributed workflows (e.g.,
+sending configs across processes):
+
+```python
+import cloudpickle, pickle
+
+cfg = Model.Config(hidden_size=512)
+cfg_ = pickle.loads(cloudpickle.dumps(cfg))
+model = cfg_.make()  # parent_class is preserved
+```
+
+## Comparison
+
+| | [configgle](https://github.com/jvdillon/configgle) | [Hydra](https://github.com/facebookresearch/hydra) | [Sacred](https://github.com/IDSIA/sacred) | [OmegaConf](https://github.com/omry/omegaconf) | [Gin](https://github.com/google/gin-config) | [ml_collections](https://github.com/google/ml_collections) | [Fiddle](https://github.com/google/fiddle) | [Confugue](https://github.com/cifkao/confugue) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Pure Python (no YAML/strings) | ✅ | ❌ | ❌ | 🟡 | ❌ | ✅ | ✅ | ❌ |
+| Typed `make()`/`build()` return | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Config inheritance | ✅ | 🟡 | ❌ | 🟡 | ❌ | ❌ | ❌ | 🟡 |
+| Covariant protocol | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Nested finalization | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `pickle`/`cloudpickle` | ✅ | 🟡 | ❌ | ✅ | ❌ | 🟡 | ✅ | ❌ |
+| Auto-generated configs | ✅ | 🟡 | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| GitHub stars | -- | 10.2k | 4.4k | 2.3k | 2.1k | 1.0k | 374 | 21 |
+
+✅ = yes, 🟡 = partial, ❌ = no. Corrections welcome --
+[open a PR](https://github.com/jvdillon/configgle/pulls).
+
+### How each library works
+
+**[Hydra](https://github.com/facebookresearch/hydra)** (Meta) --
+YAML-centric with optional "structured configs" (Python dataclasses registered
+in a `ConfigStore`). Instantiation uses `hydra.utils.instantiate()`, which
+resolves a string `_target_` field to an import path -- the return type is
+`Any`. Config composition is done via YAML defaults lists, not class
+inheritance. Dataclass inheritance works at the schema level. `configen` is
+an experimental code-generation tool (v0.9.0.dev8) that produces structured
+configs from class signatures. Configs survive pickle trivially since
+`_target_` is a string, not a class reference.
+
+**[Sacred](https://github.com/IDSIA/sacred)** --
+Experiment management framework. Config is defined via `@ex.config` scopes
+(local variables become config entries) or loaded from YAML/JSON files. Sacred
+auto-*injects* config values into captured functions by parameter name
+(dependency injection), but does not auto-*generate* configs from function
+signatures. No typed factory methods, no config inheritance, no pickle
+support for the experiment/config machinery.
+
+**[OmegaConf](https://github.com/omry/omegaconf)** --
+YAML-native configuration with a "structured config" mode that accepts
+`@dataclass` schemas. Configs are always wrapped in `DictConfig` proxy objects
+at runtime (not actual dataclass instances). Supports dataclass inheritance
+for schema definition. Good pickle support (`__getstate__`/`__setstate__`).
+No factory method (`to_object()` returns `Any`), no auto-generation, no
+protocols.
+
+**[Gin](https://github.com/google/gin-config)** (Google) --
+Global string-based registry. You decorate functions with `@gin.configurable`
+and bind parameters via `.gin` files or `gin.bind_parameter('fn.param', val)`.
+There are no config objects -- parameter values live in a global dict keyed by
+dotted strings. No typed returns, no config inheritance. The docs state
+"gin-configurable functions are not pickleable," though a 2020 PR added
+`__reduce__` methods that improve support.
+
+**[ml_collections](https://github.com/google/ml_collections)** (Google) --
+Dict-like `ConfigDict` with dot-access, type-checking on mutation, and
+`FieldReference` for lazy cross-references between values. Pure Python, no
+YAML. No factory method or typed instantiation. Pickle works for plain configs,
+but `FieldReference` operations that use lambdas internally (`.identity()`,
+`.to_int()`) fail with standard pickle (cloudpickle handles them).
+
+**[Fiddle](https://github.com/google/fiddle)** (Google) --
+Python-first. You build config graphs with `fdl.Config[MyClass]` objects and
+call `fdl.build()` to instantiate them. `build(Config[T]) -> T` is typed via
+`@overload`. Config modification is functional (`fdl.copy_with`), not
+inheritance-based -- there are no config subclasses. `@auto_config` rewrites a
+factory function's AST to produce a config graph automatically. Full
+pickle/cloudpickle support.
+
+**[Confugue](https://github.com/cifkao/confugue)** --
+YAML-based hierarchical configuration. The `configure()` method instantiates
+objects from YAML dicts, with the class specified via a `!type` YAML tag.
+Returns `Any`. Partial config inheritance via YAML merge keys (`<<: *base`).
+No pickle support, no auto-generation, no protocols.
 
 ## Citing
 
