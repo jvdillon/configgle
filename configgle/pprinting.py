@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pprint import PrettyPrinter
-from typing import IO, Protocol, TypeVar, override
+from typing import IO, Final, Protocol, TypeVar, override
 
 import dataclasses
 import io
@@ -30,11 +30,9 @@ class SupportsWrite(Protocol[_T_contra]):
     def write(self, s: _T_contra, /) -> object: ...
 
 
-_DEFAULT_CONTINUATION_PIPE_THRESHOLD = (
-    50  # config-globals: ignore -- formatting default.
-)
+_DEFAULT_CONTINUATION_PIPE_THRESHOLD: Final = 50
 
-_SHORT_SEQUENCE_MAX_WIDTH = 40  # config-globals: ignore -- formatting default.
+_SHORT_SEQUENCE_MAX_WIDTH: Final = 40
 
 
 def pformat(
