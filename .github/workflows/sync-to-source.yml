@@ -169,6 +169,7 @@ jobs:
             --public-head-ref "${{ steps.refs.outputs.head_ref }}" \
             --branch-prefix "$COPYBARISTA_IMPORT_BRANCH_PREFIX" \
             --sync-label "$COPYBARISTA_SYNC_LABEL" \
+            --refresh-public-lockfile \
             --report "$IMPORT_REPORT" \
             --validation-command 'uv sync --all-groups' \
             --validation-command 'uv run ruff check --no-fix --no-cache .' \
