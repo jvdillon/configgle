@@ -3,7 +3,14 @@
 1. Increment version in `pyproject.toml` and `git push` it.
 
 2. Build and smoke-test the wheel:
+
+   `uv lock` first: the lockfile pins this package's own version, so
+   building without it publishes an artifact whose lock still names the
+   previous one -- and `uv run` below resolves from the lock, so the smoke
+   test imports the OLD code and passes.
+
    ```bash
+   uv lock
    uv sync --group publish
    rm -rf dist
    uv build --out-dir dist
