@@ -1,24 +1,37 @@
+# DO NOT EDIT -- generated from package-validation.yml.tmpl and this
+# package's sync config. Hand edits are overwritten; change
+# the template, the generator, or the sync config instead.
 name: Package validation
 
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "**"
   push:
     branches: [main]
+    paths:
+      - "**"
 
 permissions:
   contents: read
+
+concurrency:
+  group: package-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
     name: Lint, type-check, test, and build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v6
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep fd-find
       - name: Validate package
         run: |
           uv sync --all-groups
@@ -28,8 +41,6 @@ jobs:
           uv run ty check
           uv run basedpyright configgle tests
           uv run pytest
-          uv run pytest -m ci_smoke -o addopts="--durations=20" || \
-            test "$?" = 5
           uv run python -c "import configgle"
           rm -rf dist
           uv build --out-dir dist
