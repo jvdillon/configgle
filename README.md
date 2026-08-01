@@ -6,15 +6,26 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Discord](https://img.shields.io/discord/1530237005311639592?logo=discord&logoColor=white&label=Discord&color=5865F2)](https://discord.gg/2GZFPPvCqn)
 
+## Quick Start
+
+```bash
+# Mac:
+#   # Required for quick install.
+#   brew install uv
+
+# Ubuntu/Debian:
+#   # Required for quick install.
+#   sudo apt-get install -y curl
+#   curl -LsSf https://astral.sh/uv/install.sh | sh
+
+uv add configgle
+
+# Alternatively: python -m pip install configgle
+```
+
 Hierarchical experiment configuration using pure Python dataclasses with typed
 factory methods, covariant protocols, inheritance support, and tooling for
 pretty printing, autodecorating, updating, and semi-deep copying.
-
-## Installation
-
-```bash
-python -m pip install configgle
-```
 
 ## Example
 
