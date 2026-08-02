@@ -91,7 +91,13 @@ class DataclassLike(Protocol):
 
 @runtime_checkable
 class Makeable(Protocol[_T_co]):
-    """Protocol for objects with make(), finalize(), and update() methods."""
+    """Protocol for config-like objects.
+
+    Requires the ``make()``/``finalize()``/``update()`` methods *and* the
+    ``_finalized`` and ``parent_class`` members declared below, so
+    ``isinstance(obj, Makeable)`` is False for a class that defines only the
+    three methods.
+    """
 
     # Read-only: implementers store `_finalized` however they like (a writable
     # slot on `Maker`, a mutable dataclass field on `InlineConfig`, or a frozen

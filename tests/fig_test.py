@@ -559,6 +559,31 @@ def test_inline_config_satisfies_makeable():
     assert partial_cfg.make()() == 42
 
 
+def test_makeable_requires_more_than_the_three_methods():
+    """make/finalize/update alone do not satisfy Makeable.
+
+    Guards the documented contract: _finalized and parent_class are part of
+    the protocol, so a three-method class is rejected by isinstance.
+    """
+
+    class ThreeMethods:
+        def make(self) -> object:
+            return object()
+
+        def finalize(self) -> Self:
+            return self
+
+        def update(self, *_args: object, **_kwargs: object) -> Self:
+            return self
+
+    class FiveMembers(ThreeMethods):
+        _finalized = False
+        parent_class = None
+
+    assert not isinstance(ThreeMethods(), Makeable)
+    assert isinstance(FiveMembers(), Makeable)
+
+
 def test_require_defaults_error_message():
     """Test that missing default raises TypeError with helpful message."""
     with pytest.raises(TypeError, match="has no default value"):
