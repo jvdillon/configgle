@@ -251,7 +251,9 @@ Deserialization imports the modules named in the payload, so treat a
 serialized config like ``pickle``: load only trusted data.
 
 ``Makeable`` -- Runtime-checkable ``Protocol`` defining the config
-interface (``make()``, ``finalize()``, ``update()``). Also aliased as
+interface: ``make()``, ``finalize()``, ``update()``, plus the ``_finalized``
+and ``parent_class`` members. All five are required, so ``isinstance``
+rejects a class carrying only the three methods. Also aliased as
 ``Configurable``.
 
 ``Maker`` subclasses also integrate with IPython/Jupyter via

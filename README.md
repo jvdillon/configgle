@@ -191,8 +191,10 @@ becomes unnecessary.
 ### Covariant `Makeable` protocol
 
 `Makeable[T]` is a covariant protocol satisfied by any `Fig`, `InlineConfig`,
-or custom class with `make()`, `finalize()`, and `update()`. Because it's
-covariant, `Makeable[Dog]` is assignable to `Makeable[Animal]`:
+or custom class exposing `make()`, `finalize()`, `update()`, plus the
+`_finalized` and `parent_class` members (`Maker` and `InlineConfig` provide all
+five). Because it's covariant, `Makeable[Dog]` is assignable to
+`Makeable[Animal]`:
 
 ```python
 from configgle import Makeable
