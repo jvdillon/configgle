@@ -33,16 +33,25 @@ repos:
 
       - id: end-of-file-fixer
         stages: [pre-commit]
+        exclude: |
+          (?x)^(
+            (.*/)?third_party/
+          )
 
       - id: trailing-whitespace
         stages: [pre-commit]
+        exclude: |
+          (?x)^(
+            (.*/)?third_party/
+          )
 
       - id: check-added-large-files
         stages: [pre-commit]
         args: [--maxkb=500, --enforce-all]
         exclude: |
           (?x)^(
-            uv\.lock
+            |typings/
+            |uv\.lock
           )
 
       - id: check-merge-conflict
@@ -86,6 +95,11 @@ repos:
         types_or: [python, markdown, jupyter, shell]
         entry: uv --quiet run --frozen --group lint codespell
         args: [-w]
+        exclude: |
+          (?x)^(
+            typings/
+            |(.*/)?third_party/
+          )
 
   # No official ty pre-commit hook yet (https://github.com/astral-sh/ty/issues/269).
   - repo: local

@@ -1,8 +1,32 @@
-# Releasing to PyPI
+# Releasing configgle to PyPI
 
-1. Increment version in `pyproject.toml` and `git push` it.
+Maintainer-only. Replace `X.Y.Z` with the new version throughout.
 
-2. Build and smoke-test the wheel:
+A published GitHub Release triggers `.github/workflows/publish-pypi.yml`,
+which builds, validates, and uploads to PyPI via OIDC trusted publishing
+(no API token). Follow the steps in order.
+
+## Steps
+
+1. **(First release only) Register the trusted publisher on PyPI.**
+   Skip if already done. Web-console only, no CLI. Go to
+   https://pypi.org/manage/project/configgle/settings/publishing/ and add
+   a publisher with these exact values:
+
+   | Field | Value |
+   |---|---|
+   | Owner | `rekursiv-ai` |
+   | Repository name | `configgle` |
+   | Workflow filename | `publish-pypi.yml` |
+   | Environment name | `pypi` |
+
+   Environment name **must** be `pypi` (matches `publish-pypi.yml:16`).
+   Blank here = `invalid-publisher` at publish time.
+
+2. **Bump the version** in `pyproject.toml` (source of truth). Must
+   increase; PyPI rejects re-uploads.
+
+3. **Refresh the lockfile and validate locally** (same checks CI runs):
 
    `uv lock` first: the lockfile pins this package's own version, so
    building without it publishes an artifact whose lock still names the
@@ -11,30 +35,46 @@
 
    ```bash
    uv lock
-   uv sync --group publish
-   rm -rf dist
-   uv build --out-dir dist
-   wheel="$(ls dist/configgle-*.whl | head -n 1)"
-   uv run --isolated --with "$wheel" python -c "import configgle; print(configgle.__file__)"
+   uv build
+   uv run python -c "import configgle; print(configgle.__file__)"
    ```
 
-3. Upload:
+4. **Commit and merge to `main`.** Confirm the published version:
    ```bash
-   uv run twine upload dist/*
+   gh api repos/rekursiv-ai/configgle/contents/pyproject.toml --jq .content | base64 -d | grep '^version'
    ```
 
-4. Create GitHub release:
+5. **Cut the release** (this triggers the PyPI publish):
    ```bash
-   gh release create v1.3.1 --repo rekursiv-ai/configgle --title "v1.3.1" --generate-notes
+   gh release create vX.Y.Z --repo rekursiv-ai/configgle --title "vX.Y.Z" --generate-notes
    ```
 
-5. Clean up build artifacts:
+6. **Watch the workflow:**
    ```bash
-   rm -rf dist/
+   gh run watch --repo rekursiv-ai/configgle $(gh run list --repo rekursiv-ai/configgle --workflow publish-pypi.yml --limit 1 --json databaseId --jq '.[0].databaseId')
    ```
 
-6. Verify successful pypi push: https://pypi.org/simple/configgle/
-   (or https://pypi.org/project/configgle/)
+7. **Confirm it's live:**
    ```bash
-   pip index versions configgle
+   curl -s https://pypi.org/pypi/configgle/json | jq -r '.info.version'   # should print X.Y.Z
    ```
+   Browser: https://pypi.org/project/configgle/
+
+## If the workflow fails
+
+- **`invalid-publisher`** ("valid token, but no corresponding
+  publisher") — the trusted publisher isn't registered or doesn't match.
+  Do step 1, then re-run: `gh workflow run publish-pypi.yml --repo rekursiv-ai/configgle`.
+
+- **Transient PyPI failure** — re-run without a new tag:
+  `gh workflow run publish-pypi.yml --repo rekursiv-ai/configgle`.
+
+- **Must ship now, publishing still broken** — upload directly with the
+  project's API token (`rekursiv-ai`-owned, e.g. `$PYPI_TOKEN_WORK`; a
+  personal token can't publish `configgle`):
+  ```bash
+  uv build --out-dir dist
+  uv run --with twine twine check dist/configgle-X.Y.Z*
+  uv run --with twine twine upload dist/configgle-X.Y.Z* -u __token__ -p "$PYPI_TOKEN_WORK"
+  ```
+  Permanent and public; PyPI never allows re-uploading a version.
