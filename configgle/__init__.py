@@ -284,6 +284,7 @@ requires ``Makes`` annotations to achieve the same narrowing.
 
 from __future__ import annotations
 
+from configgle.cli_override import apply_overrides
 from configgle.custom_types import (
     Configurable,
     DataclassLike,
@@ -317,6 +318,7 @@ __all__ = [
     "PartialConfig",
     "RelaxedConfigurable",
     "RelaxedMakeable",
+    "apply_overrides",
     "autofig",
     "pformat",
     "pprint",
