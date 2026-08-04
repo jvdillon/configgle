@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import field
+from pathlib import Path
+
+import os
+import subprocess
+import sys
+import textwrap
 
 import pytest
 
-from configgle import Fig, Makeable
+from configgle import Fig, Makeable, launch
 from configgle.launch import resolve_config
 
 
@@ -88,6 +94,70 @@ def test_resolve_config_composes_with_overrides_and_make() -> None:
     assert isinstance(trainer, Trainer)
     assert trainer.config.steps == 5
     assert trainer.config.child.lr == 3e-4
+
+
+# --- The module docstring's worked example, executed ---------------------------
+#
+# The docstring is the only place a new user learns the pattern, so it is run
+# rather than trusted: the indented block is extracted verbatim, written to a
+# module, and launched through the real CLI. A drifted example fails here.
+
+
+def _docstring_example() -> str:
+    """Return the dedented `myproject/experiments.py` block from launch.__doc__."""
+    doc = launch.__doc__ or ""
+    body = doc.split("    # myproject/experiments.py\n", 1)[1]
+    body = body.split("\nRun it,", 1)[0]
+    # The docstring shows the public import path; in the monorepo the package is
+    # nested. Normalizing here (rather than at each call site) keeps this file
+    # byte-identical after the export rewrites `configgle` -> `configgle`;
+    # a per-call `.replace` becomes a no-op whose line then re-wraps, and
+    # `ruff format --check` fails in the exported tree.
+    return textwrap.dedent(body).replace(
+        "from configgle import", f"from {launch.__name__.rsplit('.', 1)[0]} import"
+    )
+
+
+def test_docstring_example_is_runnable(tmp_path: Path) -> None:
+    """The documented example must import, resolve, override, and make."""
+    (tmp_path / "myexample.py").write_text(_docstring_example())
+
+    env = {**os.environ, "PYTHONPATH": f"{tmp_path}{os.pathsep}{Path.cwd()}"}
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "configgle",
+            "myexample.baseline",
+            "--override",
+            "lr=3e-4",
+            "--override",
+            "steps=5",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    # The example's `run()` prints its resolved config; the overrides must land.
+    assert "training 5 steps at lr=0.0003" in result.stdout
+
+
+def test_docstring_example_defaults_run_unchanged(tmp_path: Path) -> None:
+    """Without overrides the example runs on its declared defaults."""
+    (tmp_path / "myexample.py").write_text(_docstring_example())
+    env = {**os.environ, "PYTHONPATH": f"{tmp_path}{os.pathsep}{Path.cwd()}"}
+    result = subprocess.run(
+        [sys.executable, "-m", "configgle", "myexample.baseline"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "training 100 steps at lr=0.001" in result.stdout
 
 
 if __name__ == "__main__":

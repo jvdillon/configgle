@@ -55,6 +55,9 @@ dev = [
     {include-group = "typecheck"},
 ]
 
+[project.scripts]
+configgle = "configgle.launch:main"
+
 [project.urls]
 Homepage = "https://www.rekursiv.ai"
 Repository = "https://github.com/rekursiv-ai/configgle"
