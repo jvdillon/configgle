@@ -372,6 +372,38 @@ cfg.pprint()  # prints to stdout
 s = cfg.pformat()  # returns string
 ```
 
+### CLI overrides
+
+`apply_overrides` edits a config from `PATH=VALUE` strings. Dotted paths reach
+into nested configs, every hop is checked against the node's declared fields
+(so a typo raises instead of silently creating an attribute), and the value is
+cast to the field's declared type:
+
+```python
+from configgle import apply_overrides
+
+cfg = Model.Config()
+apply_overrides(cfg, ["hidden_size=512", "mlp.dropout=0.2"])
+```
+
+`configgle/launch.py` wires that to argparse, so any factory function returning
+a config is runnable as-is:
+
+```python
+# myproject/experiments.py
+def baseline() -> Makeable[Trainer]:
+    return Trainer.Config()
+```
+
+```sh
+python -m configgle myproject.experiments.baseline --override mlp.dropout=0.2
+```
+
+The launcher is deliberately small -- it exists to make `--override` usable out
+of the box and to show the pattern. A real project usually wants its own entry
+point (hardware logging, distributed setup, run naming); build it on
+`resolve_config` and `apply_overrides` rather than copying the file.
+
 ### `Dataclass` base
 
 `Dataclass` provides the auto-dataclass metaclass (with the same opinionated
@@ -401,81 +433,128 @@ model = cfg_.make()  # parent_class is preserved
 
 | | [configgle](https://github.com/rekursiv-ai/configgle) | [Hydra](https://github.com/facebookresearch/hydra) | [Sacred](https://github.com/IDSIA/sacred) | [OmegaConf](https://github.com/omry/omegaconf) | [Gin](https://github.com/google/gin-config) | [ml_collections](https://github.com/google/ml_collections) | [Fiddle](https://github.com/google/fiddle) | [Confugue](https://github.com/cifkao/confugue) |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Pure Python (no YAML/strings) | ✅ | ❌ | ❌ | 🟡 | ❌ | ✅ | ✅ | ❌ |
+| Python-based | ✅ | 🟡 | 🟡 | 🟡 | ❌ | ✅ | ✅ | 🟡 |
+| YAML-based | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| CLI overrides | ✅ | ✅ | ✅ | 🟡 | 🟡 | ✅ | ✅ | ❌ |
+| Sweeps / multirun | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | 🟡 | ❌ |
 | Typed `make()`/`build()` return | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| Config inheritance | ✅ | 🟡 | ❌ | 🟡 | ❌ | ❌ | ❌ | 🟡 |
-| Covariant protocol | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Nested finalization | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `pickle`/`cloudpickle` | ✅ | 🟡 | ❌ | ✅ | ❌ | 🟡 | ✅ | ❌ |
-| Auto-generated configs | ✅ | 🟡 | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| GitHub stars | -- | 10.2k | 4.4k | 2.3k | 2.1k | 1.0k | 374 | 21 |
+| Derived fields | ✅ | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | ❌ | ❌ |
+| Config from signature | ✅ | 🟡 | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| JSON round-trip (typed) | ✅ | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | ✅ | ❌ |
+| `pickle`/`cloudpickle` | ✅ | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | ✅ | 🟡 |
+| Active | ✅ | ✅ | 🟡 | ✅ | 🟡 | 🟡 | 🟡 | ❌ |
 
 ✅ = yes, 🟡 = partial, ❌ = no. Corrections welcome --
 [open a PR](https://github.com/rekursiv-ai/configgle/pulls).
 
-### How each library works
+Row notes, since several are easy to read the wrong way:
+
+- **Python-based / YAML-based** are independent axes, not opposites. Gin is
+  neither -- it has its own `.gin` DSL. configgle is Python-only by design, so
+  it loses the YAML row outright: if your collaborators edit configs without
+  touching Python, that is a real reason to pick Hydra or OmegaConf instead.
+- **Sweeps / multirun** means launching many runs from one command. Hydra's
+  `--multirun` is the only first-class implementation; configgle has none (write
+  a loop over config functions). Fiddle's `DEFINE_fiddle_sweep` is on `main`
+  only, absent from the latest PyPI release, and emits configs without running
+  them.
+- **Derived fields** means computing one field from others. configgle's
+  `finalize()` is a user-overridable hook that cascades through child configs;
+  the 🟡 libraries re-run `__post_init__` (Hydra, OmegaConf) or re-execute config
+  scopes (Sacred) at a conversion boundary, and ml_collections has lazy
+  `FieldReference`.
+- **JSON round-trip (typed)** means dump to JSON *and* load back into live typed
+  objects. Every 🟡 reloads to an untyped dict: ml_collections has `to_json()`
+  but no `from_json`, and OmegaConf's reload yields
+  `OmegaConf.get_type(...) == dict`.
+- **Active** is measured from the last PyPI release, not repo activity. 🟡 marks
+  a library whose repo still moves but whose last release is aging (Gin 0.5.0,
+  2021-11-03; Fiddle 0.3.0, 2024-04-09; Sacred 0.8.7, 2024-11-26; ml_collections
+  1.1.0, 2025-04-17). Confugue's last release was 2020-04-22 and its last commit
+  2021-09-13.
+
+<details>
+<summary><b>How each library works</b></summary>
 
 **[Hydra](https://github.com/facebookresearch/hydra)** (Meta) --
 YAML-centric with optional "structured configs" (Python dataclasses registered
 in a `ConfigStore`). Instantiation uses `hydra.utils.instantiate()`, which
-resolves a string `_target_` field to an import path -- the return type is
-`Any`. Config composition is done via YAML defaults lists, not class
-inheritance. Dataclass inheritance works at the schema level. `configen` is
-an experimental code-generation tool (v0.9.0.dev8) that produces structured
-configs from class signatures. Configs survive pickle trivially since
-`_target_` is a string, not a class reference.
+resolves a `_target_` field -- typically a string import path, though a class
+object is also accepted -- and returns `Any`. Composition is done via defaults
+lists (usually YAML, optionally a `defaults` field on a dataclass), not class
+inheritance; dataclass inheritance works at the schema level. `configen` is an
+experimental code-generation tool (latest release v0.9.0.dev8) that produces
+structured configs from class signatures. Its `--multirun` sweeper is the most
+complete in this table.
 
 **[Sacred](https://github.com/IDSIA/sacred)** --
 Experiment management framework. Config is defined via `@ex.config` scopes
-(local variables become config entries) or loaded from YAML/JSON files. Sacred
-auto-*injects* config values into captured functions by parameter name
-(dependency injection), but does not auto-*generate* configs from function
-signatures. No typed factory methods, no config inheritance, no pickle
-support for the experiment/config machinery.
+(local variables become config entries) or loaded from YAML/JSON/pickle files,
+and overridden on the command line with `with 'a.b=5'`. Sacred auto-*injects*
+config values into captured functions by parameter name (dependency injection),
+but does not auto-*generate* configs from function signatures. Reuse is by
+composition -- ingredients nest, and stacked config scopes override a
+reusable ingredient's defaults -- rather than class inheritance. No typed
+factory methods; `Experiment` objects are not picklable, though config *files*
+may be pickles.
 
 **[OmegaConf](https://github.com/omry/omegaconf)** --
 YAML-native configuration with a "structured config" mode that accepts
-`@dataclass` schemas. Configs are always wrapped in `DictConfig` proxy objects
-at runtime (not actual dataclass instances). Supports dataclass inheritance
-for schema definition. Good pickle support (`__getstate__`/`__setstate__`).
-No factory method (`to_object()` returns `Any`), no auto-generation, no
-protocols.
+`@dataclass` schemas. Configs are `DictConfig` proxy objects at runtime, not
+dataclass instances; `OmegaConf.to_object()` converts them back into real
+instances (re-running `__post_init__` recursively as it goes). Supports
+dataclass inheritance for schema definition. Good pickle support
+(`__getstate__`/`__setstate__`). `to_object()` acts as a factory but is typed
+`Any`, so callers lose static types. `OmegaConf.from_cli()` parses a dotlist
+but leaves the merge to you. No auto-generation, no protocols.
 
 **[Gin](https://github.com/google/gin-config)** (Google) --
 Global string-based registry. You decorate functions with `@gin.configurable`
 and bind parameters via `.gin` files or `gin.bind_parameter('fn.param', val)`.
 There are no config objects -- parameter values live in a global dict keyed by
-dotted strings. No typed returns, no config inheritance. The docs state
-"gin-configurable functions are not pickleable," though a 2020 PR added
-`__reduce__` methods that improve support.
+`(scope, selector)`. No typed returns, and no config-object inheritance (though
+`.gin` files compose via `include`, and scoped bindings inherit from the root
+scope). The docs still state "Gin-configurable functions are not pickleable,"
+but as of 2021 Gin wraps the metaclass `__call__` so that *instances* of
+configurable classes pickle fine; a community PR proposing `__reduce__` was
+closed unmerged.
 
 **[ml_collections](https://github.com/google/ml_collections)** (Google) --
 Dict-like `ConfigDict` with dot-access, type-checking on mutation, and
-`FieldReference` for lazy cross-references between values. Pure Python, no
-YAML. No factory method or typed instantiation. Pickle works for plain configs,
-but `FieldReference` operations that use lambdas internally (`.identity()`,
-`.to_int()`) fail with standard pickle (cloudpickle handles them).
+`FieldReference` for lazy cross-references between values. Config files are
+Python, not YAML (the library itself depends on PyYAML for printing).
+`config_flags` gives `--config.foo.bar=3e-4` overrides for free. No factory
+method or typed instantiation. Pickle works for plain configs, but
+`FieldReference` operations that build lambdas internally (`.identity()` --
+used by `get_oneway_ref()` -- and the `.to_int()`/`.to_float()`/`.to_str()`
+casts) fail with standard pickle; cloudpickle handles them.
 
 **[Fiddle](https://github.com/google/fiddle)** (Google) --
 Python-first. You build config graphs with `fdl.Config[MyClass]` objects and
 call `fdl.build()` to instantiate them. `build(Config[T]) -> T` is typed via
-`@overload`. Config modification is functional (`fdl.copy_with`), not
-inheritance-based -- there are no config subclasses. `@auto_config` rewrites a
-factory function's AST to produce a config graph automatically. Full
-pickle/cloudpickle support.
+`@overload`. Config modification is functional (`fdl.copy_with`) -- you don't
+subclass a config to override values. `@auto_config` rewrites a factory
+function's AST to produce a config graph automatically. Full
+pickle/cloudpickle support, and `serialization.dump_json`/`load_json` round-trip
+a config graph faithfully (though that module lives under `_src.experimental`).
 
 **[Confugue](https://github.com/cifkao/confugue)** --
 YAML-based hierarchical configuration. The `configure()` method instantiates
-objects from YAML dicts, with the class specified via a `!type` YAML tag.
-Returns `Any`. Partial config inheritance via YAML merge keys (`<<: *base`).
-No pickle support, no auto-generation, no protocols.
+objects from YAML dicts, with the class overridden via a `class:` key whose
+value uses PyYAML's `!!python/name:` tag. Returns `Any`. Partial config
+inheritance via YAML merge keys (`<<: *base`). No CLI, no auto-generation, no
+protocols. Pickling is undocumented and untested -- configured instances do
+pickle, but `bind()` results do not. Unmaintained: last release 2020-04-22,
+last commit 2021-09-13.
+
+</details>
 
 ## Citing
 
 If you find our work useful, please consider citing:
 
 ```bibtex
-@misc{dillon2026configgle,
+@misc{rekursivai2026configgle,
       title={Configgle - Type-safe hierarchical experiment configuration using pure Python dataclass factories and dependency injection.},
       author={Joshua V. Dillon},
       year={2026},
