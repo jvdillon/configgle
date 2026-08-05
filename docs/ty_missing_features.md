@@ -1,167 +1,163 @@
 # ty Missing Features / Limitations
 
-This document tracks ty type checker limitations discovered while making configgle compatible with both ty and basedpyright.
+Type-checker limitations found while making configgle work under both `ty` and
+`basedpyright`, plus the upstream fixes that closed them.
 
-**ty version tested:** 0.0.49
+`Intersection`-based `make()` typing (see `MakerMeta.__get__` in `fig.py`)
+reaches corners of the type system most libraries never touch, so several
+behaviors configgle depends on were fixed upstream rather than worked around
+here.
 
----
-
-## 1. Decorator return types not honored
-
-**Status:** Fixed in ty 0.0.49 ([astral-sh/ty#143](https://github.com/astral-sh/ty/issues/143), via [astral-sh/ruff#22375](https://github.com/astral-sh/ruff/pull/22375))
-
-**Description:** ty previously did not honor decorator return type annotations. When a decorator declared it returns a different type than the input, ty ignored this and used the original class type. As of 0.0.49, ty honors the declared return type, so `.Config` access on `@autofig`-decorated classes resolves with no suppression.
-
-**Example:**
-```python
-from typing import TypeVar, Protocol, ClassVar
-
-_T = TypeVar("_T")
-
-
-class HasConfig(Protocol[_T]):
-    Config: ClassVar[type[_T]]
-
-
-def decorator(cls: type[_T]) -> type[HasConfig[_T]]:
-    cls.Config = type("Config", (), {})
-    return cls  # type: ignore
-
-
-@decorator
-class Foo:
-    pass
-
-
-# basedpyright: Foo is type[HasConfig[Foo]] ✓
-# ty: Foo is <class 'Foo'> ✗
-
-Foo.Config  # ty error: Class `Foo` has no attribute `Config`
-```
-
-**Impact (historical):** Users of `@autofig` saw `unresolved-attribute` errors when accessing `.Config` on decorated classes. No longer occurs on ty ≥ 0.0.49.
+**Required:** `ty>=0.0.60` (declared in `pyproject.toml`) -- the first release
+carrying [ruff#26649](https://github.com/astral-sh/ruff/pull/26649), general
+`type[Protocol]` support, without which configgle's `Intersection` does not
+simplify. **Tested on:** 0.0.65 with `basedpyright` 1.39.9. Every status below
+was re-verified against 0.0.65 on 2026-08-05 by running the example.
 
 ---
 
-## 2. TypeIs does not narrow to intersection type
+## Open
 
-**Status:** Minor (workaround available)
+### 1. TypeIs does not narrow to intersection type
 
-**Description:** `TypeIs` (PEP 742) should narrow a type to the intersection of the original type and the guard type. ty narrows to just the guard type, losing the original type information.
+**Status:** Open. Requires suppression.
 
-**Example:**
+`TypeIs` (PEP 742) should narrow to the intersection of the declared type and
+the guard type. `ty` narrows to just the guard type, losing the original.
+
 ```python
-from typing_extensions import TypeIs
-
-
-class Finalizable(Protocol):
-    def finalize(self) -> Self: ...
-
-
-_T = TypeVar("_T")
-
-
-def needs_finalize(x: object) -> TypeIs[Finalizable]:
-    return hasattr(x, "finalize")
-
-
 def process(value: _T) -> _T:
     if needs_finalize(value):
-        # basedpyright: value is _T & Finalizable, returns _T ✓
-        # ty: value is Finalizable, returns Finalizable ✗
+        # basedpyright: value is _T & Finalizable, returns _T OK
+        # ty: value is Finalizable, returns Finalizable FAIL
         return value.finalize()
     return value
 ```
 
-**Impact:** Functions that use `TypeIs` for type narrowing show return type mismatches.
+On 0.0.65: `warning[invalid-return-type] Return type does not match returned
+value: expected _T@process, found Self@finalize`.
 
-**Workaround:** Add `# ty: ignore[invalid-return-type]` on affected return statements.
+**Workaround:** `# ty: ignore[invalid-return-type]` on the affected return.
 
----
+### 2. `hasattr()` does not narrow type
 
-## 3. Protocol decorated with @dataclass flagged as invalid
+**Status:** Open. Requires suppression.
 
-**Status:** Fixed in configgle
+After `if hasattr(x, "method")`, `ty` still sees the original type.
 
-**Description:** ty reports an error when a Protocol is decorated with `@dataclass`, even with `init=False, repr=False, eq=False`. This pattern is used to make protocols `runtime_checkable` with dataclass-like behavior.
-
-**Example:**
 ```python
-@runtime_checkable
-@dataclasses.dataclass(init=False, repr=False, eq=False)
-class DataclassLike(Protocol):
-    pass
-
-
-# ty error: Protocol class `DataclassLike` cannot be decorated with `@dataclass`
+def process(v: object) -> object:
+    if hasattr(v, "make"):
+        return v.make()  # ty: Object of type `object` is not callable
+    return v
 ```
 
-**Resolution:** Removed `@dataclass` decorator, added explicit `__dataclass_fields__` class variable instead.
+On 0.0.65: `warning[call-non-callable]`.
 
----
+**Workaround:** Use `isinstance()` with a `runtime_checkable` Protocol -- what
+configgle does with `Finalizeable` and `MutableNamespace` in `custom_types.py`.
 
-## 4. `Final[T]` in Protocol requires value
+### 3. Generic proxy subscript operations on a type variable
 
-**Status:** Fixed in configgle
+**Status:** Open. Requires suppression.
 
-**Description:** ty requires `Final` annotations to have values, even in Protocol definitions where they serve as interface declarations.
+A generic proxy forwarding `__getitem__`/`__setitem__` to a wrapped object
+errors because `_T` may not support the operation.
 
-**Example:**
-```python
-class Configurable(Protocol):
-    _finalized: Final[bool]  # ty error: Final symbol not assigned a value
-```
-
-**Resolution:** Changed to `_finalized: bool` (removed `Final`).
-
----
-
-## 5. Generic proxy subscript operations on type variable
-
-**Status:** Requires suppression
-
-**Description:** When implementing a generic proxy class `Proxy[_T]` that forwards `__getitem__`/`__setitem__`/`__delitem__` to a wrapped object, ty reports errors because `_T` may not support these operations.
-
-**Example:**
 ```python
 class CopyOnWrite(Generic[_T]):
     __wrapped__: _T
 
     def __getitem__(self, key: object) -> object:
-        return self.__wrapped__[key]  # ty error: Cannot subscript _T
+        return self.__wrapped__[key]  # ty: Cannot subscript _T
 ```
 
-**Impact:** Proxy patterns require suppression comments.
+On 0.0.65: `warning[not-subscriptable]`.
 
-**Workaround:** Add `# ty: ignore[not-subscriptable]` or `# ty: ignore[invalid-assignment]`.
+**Workaround:** `# ty: ignore[not-subscriptable]` or
+`# ty: ignore[invalid-assignment]`.
+
+### 4. Protocol decorated with `@dataclass` flagged as invalid
+
+**Status:** Open upstream; avoided in configgle.
+
+`ty` errors when a Protocol is decorated with `@dataclass`, even with
+`init=False, repr=False, eq=False`. On 0.0.65:
+`warning[invalid-dataclass] Protocol class ... cannot be decorated with
+@dataclass`.
+
+**Resolution here:** `DataclassLike` (`custom_types.py`) declares an explicit
+`__dataclass_fields__` ClassVar instead of using the decorator.
+
+### 5. TypeVars in `ClassVar` are spec-illegal but semantically needed
+
+**Status:** Open by design; suppressed deliberately.
+
+PEP 526 forbids type variables inside `ClassVar`, but a Protocol needs a
+class-level attribute whose type varies per parameterization -- something the
+type system cannot express. Both checkers reject it; both suppressions are
+intentional. See `HasConfig`, `RelaxedMakeable`, and `HasRelaxedConfig` in
+`custom_types.py`, where the alternatives (drop `ClassVar`, use `@property`)
+are documented inline.
+
+### 6. TypeVar polluted by a `T | None` annotation into a callable parameter
+
+**Status:** Open --
+[ty#4016](https://github.com/astral-sh/ty/issues/4016) (filed by us,
+2026-07-16; labels: generics, bidirectional inference, callables).
+
+A `T | None` return/default annotation leaks `None` into the solution for a
+`TypeVar` bound by a callable parameter.
 
 ---
 
-## 6. `hasattr()` does not narrow type
+## Fixed upstream
 
-**Status:** Requires suppression
+Filed from configgle's use of `Intersection`, metaclass descriptors, and
+covariant protocols. All verified closed.
 
-**Description:** ty does not narrow types based on `hasattr()` checks. After `if hasattr(x, "method")`, ty still sees `x` as the original type without the method.
+| Issue | What it blocked | Closed |
+|---|---|---|
+| [ty#143](https://github.com/astral-sh/ty/issues/143) | Class decorator return types were ignored, so `@autofig`'s `.Config` was unresolvable. Fixed via [ruff#22375](https://github.com/astral-sh/ruff/pull/22375), released in 0.0.49 | 2026-05-19 |
+| [ty#3279](https://github.com/astral-sh/ty/issues/3279) | A metaclass `__get__` under `TYPE_CHECKING` made the class unusable as a base -- exactly `MakerMeta`'s shape | 2026-04-15 |
+| [ty#3282](https://github.com/astral-sh/ty/issues/3282) | Metaclass lookup through intersection-typed bases, so an inherited Config keeps its child fields | 2026-06-19 |
+| [ty#3835](https://github.com/astral-sh/ty/issues/3835) | Panic on a recursive PEP-695 alias mixing covariant and invariant generics (0.0.52 regression); `Makeable[_T_co]` triggered it | 2026-06-23 |
 
-**Example:**
-```python
-def process(v: object) -> object:
-    if hasattr(v, "make"):
-        return v.make()  # ty error: Object of type `object` is not callable
-    return v
-```
+Also fixed: `Final[T]` in a Protocol without a value once required an
+assignment. It type-checks clean on 0.0.65, so configgle's `_finalized: bool`
+no longer needs to avoid `Final` for that reason.
 
-**Workaround:** Use `isinstance()` with a `runtime_checkable` Protocol, or add `# ty: ignore[call-non-callable]`.
+### Patches we contributed
+
+| PR | What it does | Status |
+|---|---|---|
+| [ruff#26545](https://github.com/astral-sh/ruff/pull/26545) | Narrow `isinstance` against intersections containing an invalid member -- the `isinstance(x, Makeable)` path | Merged 2026-07-07, shipped in 0.0.57 |
+| [jsonpickle#611](https://github.com/jsonpickle/jsonpickle/pull/611) | Escape reserved-tag dict keys before the picklability check (they were silently dropped) | Merged 2026-07-07 |
+| [ruff#26553](https://github.com/astral-sh/ruff/pull/26553) | Filter trivial `object` constructors from `type[...]` intersection member lookup and calls | Closed unmerged |
+| [ruff#26571](https://github.com/astral-sh/ruff/pull/26571) | Allow `type[C]` assignable to `type[Protocol]` via structural subtyping | Closed unmerged |
+
+The last two were closed because `ty` gained general
+[`type[Protocol]` support](https://github.com/astral-sh/ruff/pull/26649)
+(merged 2026-07-14, shipped in 0.0.60), which simplifies the intersection and
+dissolves both problems at the source rather than patching around them. As
+carljm put it on #26553: "configgle no longer encounters the problem because
+after #26649 the intersection (which involves a `type[Proto]`) now simplifies."
+That is why the package floor is 0.0.60 and not the 0.0.49 that first resolved
+`@autofig`.
+
+The jsonpickle patch predates the decision to ship a bespoke serializer; see
+[jsonpickle.md](jsonpickle.md) for why configgle keeps that wire format but not
+that dependency.
 
 ---
 
-## Summary Table
+## Summary
 
-| Issue | Severity | Workaround Available |
-|-------|----------|---------------------|
-| Decorator return types | Fixed (0.0.49) | n/a |
-| TypeIs intersection | Medium | Suppress comment |
-| Protocol + @dataclass | Low | Remove decorator |
-| Final in Protocol | Low | Remove Final |
-| Generic proxy subscript | Medium | Suppress comment |
-| hasattr narrowing | Medium | Use isinstance or suppress |
+| Limitation | Severity | Workaround |
+|---|---|---|
+| TypeIs intersection | Medium | Suppress `invalid-return-type` |
+| `hasattr` narrowing | Medium | `isinstance` + runtime_checkable Protocol |
+| Generic proxy subscript | Medium | Suppress `not-subscriptable` |
+| Protocol + `@dataclass` | Low | Declare `__dataclass_fields__` explicitly |
+| TypeVar in `ClassVar` | Low | Deliberate suppression, both checkers |
+| TypeVar pollution (#4016) | Medium | None yet |
