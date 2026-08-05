@@ -491,7 +491,8 @@ Corrections welcome --
 
 (🚫 appears only for configgle because we cannot report why another library chose its featureset.)
 
-What each row means.
+<details>
+<summary><b>What each row means.</b></summary>
 
 - **Python-based** -- configs are written as Python.
   - 🟡 Python is a second path beside the primary YAML one.
@@ -543,8 +544,10 @@ What each row means.
 - **GitHub stars** -- for context. configgle is new; most of these libraries
   have years of production use behind them.
 
+</details>
+
 <details>
-<summary><b>How each library works</b></summary>
+<summary><b>How each library works.</b></summary>
 
 Release dates, commit dates, and star counts verified 2026-08-05 (PyPI JSON API
 and the GitHub repos/commits APIs); configgle itself was at 1.3.6, released the
