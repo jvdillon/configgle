@@ -484,11 +484,12 @@ model = cfg_.make()  # parent_class is preserved
 | Active | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ | ✅ | ❌ |
 | GitHub stars | 11 | 10.6k | 4.4k | 2.4k | 2.2k | 1.0k | 386 | 21 |
 
-✅ = yes, 🟡 = partial/caveat, ❌ = no, 🚫 = purposefully declined.
-🚫 appears only for configgle: we can report what another library does, not why
-it chose to.
+✅ = yes, 🟡 = partial/caveat, ❌ = no, 🚫 = intentionally no.
+
 Corrections welcome --
 [open a PR](https://github.com/rekursiv-ai/configgle/pulls).
+
+(🚫 appears only for configgle because we cannot report why another library chose its featureset.)
 
 What each row means.
 
