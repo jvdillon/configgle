@@ -40,12 +40,11 @@ jobs:
         run: |
           # Lint/type/test checks come from this package's own .pre-commit-config.yaml.
           # Restating each tool here means a newly added hook silently goes unrun.
-          uv sync --all-groups
+          uv sync --frozen --all-groups
           uv run pre-commit run --all-files --hook-stage pre-commit
           uv run pre-commit run --all-files --hook-stage pre-push
           uv run python -c "import configgle"
           rm -rf dist
           uv build --out-dir dist
-          wheel="$(ls dist/configgle-*.whl | head -n 1)"
-          uv run --isolated --with "$wheel" python -P -c "import configgle; print(configgle.__file__)"
+          wheel="$(ls dist/configgle-*.whl | head -n 1)"; uv run --isolated --with "$wheel" python -P -c "import configgle; print(configgle.__file__)"
           uv run python bin/check_wheel.py

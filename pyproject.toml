@@ -78,6 +78,7 @@ artifacts = ["configgle/py.typed"]
 # The ty_extensions polyfill ships in the wheel but is NOT placed at the tree
 # root (a root-level ty_extensions/ would shadow ty's real built-in Intersection
 # and force spurious suppressions). force-include bundles it from packages/.
+
 [tool.hatch.build.targets.wheel.force-include]
 "packages/ty-extensions/ty_extensions" = "ty_extensions"
 
@@ -85,7 +86,7 @@ artifacts = ["configgle/py.typed"]
 python_files = ["*_test.py", "test_*.py"]
 markers = [
     "ci_smoke: slower package/CLI smoke tests run explicitly in CI",
-    "cuda: tests that require a real CUDA device (deselected by default)",
+    "cuda: tests that require a real CUDA device (skipped in hosted CI)",
     "integration: tests that require networking or external CLIs (deselected by default)",
     "performance: timing-sensitive tests (deselected by default)",
 ]
@@ -116,6 +117,7 @@ omit = [
     "*/tests/*",
     "*/.venv/*",
     "*/typings/*",
+    "*/tools/*",
 ]
 
 [tool.coverage.report]
@@ -153,8 +155,8 @@ ignore = [
     "ANN",     # Flake8 annotations. (We use pyright for type checking.)
     "C90",     # McCabe complexity. (One function slightly over threshold.)
     "COM812",  # Missing trailing comma. (select=ALL warning is unfixable.)
-    "CPY001",  # Missing copyright notice. (License is in LICENSE, not per-file.)
                # https://github.com/astral-sh/ruff/issues/9216
+    "CPY001",  # Missing copyright notice. (License is in LICENSE, not per-file.)
 
     # Relax docstring rules.
     "D100",    # Undocumented public module.
@@ -228,6 +230,9 @@ ignore = [
     "TD004",   # Missing colon in TODO
     "TD005",   # Missing issue description after `TODO`
 ]
+exclude = [
+    "**/typings/**",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = [
@@ -275,6 +280,8 @@ section-order = [
 
 [tool.basedpyright]
 typeCheckingMode = "recommended"
+failOnWarnings = true  # Warnings fail the check (basedpyright default; pinned explicitly).
+useLibraryCodeForTypes = false
 exclude = [
     "**/.venv/",
     "**/node_modules/",
@@ -351,11 +358,13 @@ all = "warn"
 
 [[tool.ty.overrides]]
 include = ["typings/**"]
+
 [tool.ty.overrides.rules]
 all = "ignore"
 
 [[tool.ty.overrides]]
 include = ["*_test.py"]
+
 [tool.ty.overrides.rules]
 invalid-key = "ignore"
 
@@ -364,7 +373,7 @@ invalid-key = "ignore"
 builtin = "clear,rare,code"
 ignore-words = ".codespell-ignore"
 # Pre-commit exclude handles most skips. This covers direct CLI invocations.
-# Don't add new folder paths here — add them to .pre-commit-config.yaml's
+# Don't add new folder paths here -- add them to .pre-commit-config.yaml's
 # codespell exclude regex instead. This list is only for file patterns.
 skip = "htmlcov,.doctrees,*.pyc,*.ico,*.png,*.jpg,*.PNG,*.inv,*.dot,*.css,*.egg-info,uv.lock,__pycache__,.git,.venv,typings,**/third_party/"
 
@@ -373,6 +382,7 @@ formats = "ipynb,py:percent"
 
 [tool.uv]
 package = true
+environments = ["sys_platform == 'linux'", "sys_platform == 'darwin'"]
 
 [tool.uv.pip]
 compile-bytecode = true
