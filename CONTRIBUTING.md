@@ -18,6 +18,7 @@ uv run pytest
 Before opening a pull request, run:
 
 ```bash
+uv sync --all-groups
 uv run ruff check --no-fix --no-cache .
 uv run ruff format --check --no-cache .
 uv run codespell .

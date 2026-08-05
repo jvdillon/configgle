@@ -39,7 +39,7 @@ jobs:
       COPYBARISTA_TOOL_PROJECT_PATH: ${{ vars.COPYBARISTA_TOOL_PROJECT_PATH }}
       COPYBARISTA_IMPORT_BRANCH_PREFIX: "configgle/import/"
       COPYBARISTA_SYNC_LABEL: "Configgle"
-      COPYBARISTA_SYNC_USER_NAME: "configgle"
+      COPYBARISTA_SYNC_USER_NAME: "copybarista"
       COPYBARISTA_SYNC_USER_EMAIL: "rekursiv-bot@rekursiv.ai"
 
     if: |
@@ -209,14 +209,13 @@ jobs:
             --sync-label "$COPYBARISTA_SYNC_LABEL" \
             --report "$IMPORT_REPORT" \
             --refresh-public-lockfile \
-            --validation-command 'uv sync --all-groups' \
+            --validation-command 'uv sync --frozen --all-groups' \
             --validation-command 'uv run pre-commit run --all-files --hook-stage pre-commit' \
             --validation-command 'uv run pre-commit run --all-files --hook-stage pre-push' \
             --validation-command 'uv run python -c "import configgle"' \
             --validation-command 'rm -rf dist' \
             --validation-command 'uv build --out-dir dist' \
-            --validation-command 'wheel="$(ls dist/configgle-*.whl | head -n 1)"' \
-            --validation-command 'uv run --isolated --with "$wheel" python -P -c "import configgle; print(configgle.__file__)"' \
+            --validation-command 'wheel="$(ls dist/configgle-*.whl | head -n 1)"; uv run --isolated --with "$wheel" python -P -c "import configgle; print(configgle.__file__)"' \
             --validation-command 'uv run python bin/check_wheel.py' \
             --open-pr false
 
