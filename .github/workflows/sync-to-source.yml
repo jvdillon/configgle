@@ -216,7 +216,7 @@ jobs:
             --validation-command 'rm -rf dist' \
             --validation-command 'uv build --out-dir dist' \
             --validation-command 'wheel="$(ls dist/configgle-*.whl | head -n 1)"' \
-            --validation-command 'uv run --isolated --with "$wheel" python -c "import configgle; print(configgle.__file__)"' \
+            --validation-command 'uv run --isolated --with "$wheel" python -P -c "import configgle; print(configgle.__file__)"' \
             --validation-command 'uv run python bin/check_wheel.py' \
             --open-pr false
 
