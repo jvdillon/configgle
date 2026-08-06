@@ -48,11 +48,14 @@ typecheck = [
     "ty>=0.0.60",
     "typing_extensions",
 ]
-dev = [
+"pre-commit" = [
     {include-group = "lint"},
-    {include-group = "publish"},
     {include-group = "test"},
     {include-group = "typecheck"},
+]
+dev = [
+    {include-group = "pre-commit"},
+    {include-group = "publish"},
 ]
 
 [project.scripts]
