@@ -130,6 +130,23 @@ class _IPythonPrinter(Protocol):
     def text(self, text: str) -> None: ...
 
 
+# `parent_class` is typed `type[ParentT]`, and the typing spec only guarantees a
+# zero-argument constructor for an unbounded `type[T]`, so calling it with the
+# config is unprovable from that annotation alone. These callback protocols name
+# the constructor shape a parent class actually has; casting to one keeps the
+# result traced as ParentT instead of discarding it behind a suppression.
+class _MakesFromConfig(Protocol[_ParentT_co]):
+    """Parent class whose ``__init__`` takes its own Config positionally."""
+
+    def __call__(self, config: object, /) -> _ParentT_co: ...
+
+
+class _MakesFromKwargs(Protocol[_ParentT_co]):
+    """Parent class whose ``__init__`` takes its Config's fields as kwargs."""
+
+    def __call__(self, **kwargs: object) -> _ParentT_co: ...
+
+
 class _MakerParentClassDescriptor:
     """Descriptor that narrows parent_class return type via Generic inference."""
 
@@ -831,8 +848,8 @@ def make[ParentT](config: Maker[ParentT]) -> ParentT:
             f.name: getattr(finalized, f.name)
             for f in dataclasses.fields(cast(DataclassLike, cast(object, finalized)))
         }
-        return cls(**kwargs)
-    return cls(finalized)  # pyright: ignore[reportCallIssue] -- the parent class accepts its own Config; the checker cannot link parent_class back to that constructor signature.
+        return cast(_MakesFromKwargs[ParentT], cls)(**kwargs)
+    return cast(_MakesFromConfig[ParentT], cls)(finalized)
 
 
 def update[MakerT: Maker[Any]](
