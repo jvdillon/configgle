@@ -3,23 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable, MutableMapping, MutableSequence
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Protocol,
-    Self,
-    cast,
-    override,
-    runtime_checkable,
-)
+from typing import TYPE_CHECKING, Any, Self, cast, override
 
 import copy
 import dataclasses
 import functools
 import reprlib
 
-from configgle.custom_types import Finalizeable
-from configgle.walk import copy_tree
+from configgle.walk import _finalize_value, _make_value, copy_tree
 
 
 if TYPE_CHECKING:
@@ -87,13 +78,13 @@ class InlineConfig[T]:
           result: Result of calling func(*args, **kwargs).
 
         """
-        r = self.copy_tree().finalize()
-        # Dynamic dispatch to make() on args that may have it
-        args = [v.make() if isinstance(v, _HasMake) else v for v in r._args]  # noqa: SLF001
-        kwargs = {
-            k: v.make() if isinstance(v, _HasMake) else v
-            for k, v in r._kwargs.items()  # noqa: SLF001
-        }
+        r = self.copy_tree()
+        if not r._finalized:  # noqa: SLF001
+            r = r.finalize()
+        made: dict[int, object] = {}
+        making = {id(r)}
+        args = _make_value(r._args, made, making)  # noqa: SLF001
+        kwargs = _make_value(r._kwargs, made, making)  # noqa: SLF001
         return r.func(*args, **kwargs)
 
     def copy_tree(self, visited: dict[int, object] | None = None) -> Self:
@@ -126,15 +117,9 @@ class InlineConfig[T]:
           finalized: ``self``, with _finalized=True and nested configs finalized.
 
         """
-        # Dynamic dispatch to finalize() on args that may have it.
-        self._args = [
-            v.finalize() if isinstance(v, Finalizeable) else v for v in self._args
-        ]
-        self._kwargs = {
-            k: v.finalize() if isinstance(v, Finalizeable) else v
-            for k, v in self._kwargs.items()
-        }
         self._finalized = True
+        self._args = _finalize_value(self._args)
+        self._kwargs = _finalize_value(self._kwargs)
         return self
 
     def update(
@@ -149,23 +134,27 @@ class InlineConfig[T]:
 
         Args:
           source: Optional source object to copy attributes from.
-          skip_missing: If True, skip kwargs keys that don't exist in _kwargs.
+          skip_missing: Skip source and keyword keys absent from ``_kwargs``.
           **kwargs: Additional attribute overrides.
 
         Returns:
           self: Updated instance for method chaining.
 
         """
-        del skip_missing  # InlineConfig doesn't have fixed attributes
+        valid_keys = set(self._kwargs) if skip_missing else None
         if source is not None:
             if dataclasses.is_dataclass(source):
                 for field in dataclasses.fields(source):
+                    if valid_keys is not None and field.name not in valid_keys:
+                        continue
                     self._kwargs[field.name] = getattr(source, field.name)
             else:
                 # Copy data attributes from non-dataclass source,
                 # skipping private attrs and callables (methods, classmethods, etc.)
                 for key in dir(source):
                     if key.startswith("_"):
+                        continue
+                    if valid_keys is not None and key not in valid_keys:
                         continue
                     try:
                         val = getattr(source, key)
@@ -175,6 +164,8 @@ class InlineConfig[T]:
                         self._kwargs[key] = val
 
         for key, value in kwargs.items():
+            if valid_keys is not None and key not in valid_keys:
+                continue
             self._kwargs[key] = value
 
         return self
@@ -237,8 +228,3 @@ class PartialConfig[T](InlineConfig[Callable[..., T]]):
         **kwargs: object,
     ) -> None:
         super().__init__(functools.partial, func, *args, **kwargs)
-
-
-@runtime_checkable
-class _HasMake(Protocol):
-    def make(self) -> object: ...

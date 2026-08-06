@@ -31,7 +31,7 @@ from typing import cast
 
 import copy
 
-from configgle.custom_types import Finalizeable
+from configgle.custom_types import Finalizeable, Makeable
 
 
 __all__ = [
@@ -297,3 +297,64 @@ def _finalize_value[ValueT](value: ValueT) -> ValueT:
 
     # Reconstruct the container with the finalized items.
     return type(value)(finalized)  # pyright: ignore[reportCallIssue,reportUnknownArgumentType,reportUnknownVariableType] -- reconstruct the original container type from the finalized items; the element type is erased at runtime.
+
+
+def _make_value[ValueT](
+    value: ValueT,
+    made: dict[int, object] | None = None,
+    making: set[int] | None = None,
+) -> ValueT:
+    """Materialize nested Makeables through sequences and mappings."""
+    if made is None:
+        made = {}
+    if making is None:
+        making = set()
+
+    if isinstance(value, Makeable):
+        value_id = id(value)
+        if value_id in made:
+            return cast(ValueT, made[value_id])
+        if value_id in making:
+            raise ValueError("cannot materialize a cyclic Makeable graph")
+        making.add(value_id)
+        try:
+            result = value.make()
+        finally:
+            making.remove(value_id)
+        made[value_id] = result
+        return cast(ValueT, result)
+
+    if isinstance(value, (type, int, float, str, bytes, bool, type(None))):
+        return value
+
+    if isinstance(value, list):
+        list_value = cast("list[object]", value)
+        materialized_items: list[object] = [
+            _make_value(item, made, making) for item in list_value
+        ]
+        return cast(ValueT, materialized_items)
+    if isinstance(value, tuple):
+        tuple_value = cast("tuple[object, ...]", value)
+        materialized_items = [_make_value(item, made, making) for item in tuple_value]
+        if all(
+            materialized is original
+            for materialized, original in zip(
+                materialized_items,
+                tuple_value,
+                strict=True,
+            )
+        ):
+            return cast(ValueT, tuple_value)
+        if type(tuple_value) is tuple:
+            return cast(ValueT, tuple(materialized_items))
+        return cast(
+            ValueT,
+            type(tuple_value)(*materialized_items),  # ty: ignore[invalid-argument-type]  # pyright: ignore[reportArgumentType] -- namedtuple field types are erased at runtime
+        )
+    if isinstance(value, Mapping):
+        materialized = {
+            _make_value(key, made, making): _make_value(item, made, making)
+            for key, item in cast(Mapping[object, object], value).items()
+        }
+        return cast(ValueT, type(value)(materialized))  # pyright: ignore[reportCallIssue,reportUnknownArgumentType] -- reconstruct the original mapping type from mapped entries; its constructor shape is erased at runtime
+    return value

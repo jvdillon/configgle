@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Self
+from typing import Self, override
 
 import copy
 import dataclasses
@@ -89,6 +89,111 @@ def test_inline_config_finalize():
     assert finalized._finalized is True
     # Should finalize nested configs
     assert finalized._args[0]._finalized is True  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]  # ty: ignore[unresolved-attribute] -- dynamic _args element type is unknown
+
+
+def test_make_does_not_refinalize_an_already_finalized_inline_tree() -> None:
+    """An enclosing Config may finalize an InlineConfig before making it."""
+
+    class Value:
+        class Config(Fig["Value"]):
+            parts: tuple[str, ...] = ()
+
+            @override
+            def finalize(self) -> Self:
+                self.parts = ("derived", *self.parts)
+                return super().finalize()
+
+        def __init__(self, config: Config) -> None:
+            self.parts = config.parts
+
+    def parts(value: Value) -> tuple[str, ...]:
+        return value.parts
+
+    config = InlineConfig(parts, Value.Config())
+    finalized = config.copy_tree().finalize()
+
+    assert finalized.make() == ("derived",)
+
+
+def test_inline_config_finalizes_a_shared_child_once() -> None:
+    finalize_calls: list[None] = []
+
+    class Value:
+        class Config(Fig["Value"]):
+            @override
+            def finalize(self) -> Self:
+                finalize_calls.append(None)
+                return super().finalize()
+
+        def __init__(self, config: Config) -> None:
+            del config
+
+    shared = Value.Config()
+    config = InlineConfig(lambda left, right: (left, right), shared, shared)  # pyright: ignore[reportUnknownLambdaType, reportUnknownVariableType, reportUnknownArgumentType]
+
+    finalized = config.copy_tree().finalize()  # pyright: ignore[reportUnknownVariableType] -- InlineConfig callable has erased parameter types
+
+    assert len(finalize_calls) == 1
+    assert finalized._args[0] is finalized._args[1]
+
+
+def test_inline_config_finalize_terminates_a_self_cycle() -> None:
+    config = InlineConfig(lambda value: value)  # pyright: ignore[reportUnknownLambdaType, reportUnknownVariableType, reportUnknownArgumentType]
+    config.value = config
+
+    finalized = config.copy_tree().finalize()  # pyright: ignore[reportUnknownVariableType] -- InlineConfig callable has erased parameter types
+
+    assert finalized._finalized is True
+    assert finalized.value is finalized
+
+
+def test_inline_config_makes_nested_containers_and_shared_children_once() -> None:
+    constructed: list[None] = []
+
+    class Value:
+        class Config(Fig["Value"]):
+            value: int = 7
+            """Value copied onto the runtime instance."""
+
+        def __init__(self, config: Config) -> None:
+            constructed.append(None)
+            self.value = config.value
+
+    shared = Value.Config()
+
+    def collect(
+        values_list: list[Value],
+        values_tuple: tuple[Value, ...],
+        values_mapping: dict[str, Value],
+    ) -> tuple[list[Value], tuple[Value, ...], dict[str, Value]]:
+        return (
+            values_list,
+            values_tuple,
+            values_mapping,
+        )
+
+    config = InlineConfig(collect, [shared], (shared,), {"value": shared})
+
+    values_list, values_tuple, values_mapping = config.make()
+
+    assert isinstance(values_list, list)
+    assert isinstance(values_tuple, tuple)
+    assert isinstance(values_mapping, dict)
+    assert values_list[0] is values_tuple[0]
+    assert values_list[0] is values_mapping["value"]
+    assert values_list[0].value == 7
+    assert len(constructed) == 1
+
+
+def test_inline_config_make_rejects_a_self_cycle() -> None:
+    def identity(value: object) -> object:
+        return value
+
+    config = InlineConfig(identity)
+    config.value = config
+
+    with pytest.raises(ValueError, match="cyclic Makeable"):
+        config.make()
 
 
 def test_inline_config_attr_access():
@@ -197,12 +302,17 @@ def test_inline_config_update_with_kwargs():
     assert cfg.make() == 15
 
 
-def test_inline_config_update_skip_missing_ignored():
-    """Test InlineConfig.update ignores skip_missing (by design)."""
-    cfg = InlineConfig(lambda a: a)  # pyright: ignore[reportUnknownLambdaType, reportUnknownVariableType, reportUnknownArgumentType]
-    # skip_missing is silently ignored for InlineConfig
-    cfg.update(skip_missing=True, a=99)
-    assert cfg.a == 99
+def test_inline_config_update_skip_missing_filters_source_and_kwargs() -> None:
+    @dataclasses.dataclass  # check-dataclass: ignore[kw_only,slots]
+    class Source:
+        existing: int = 20
+        source_only: int = 30
+
+    cfg = InlineConfig(lambda **kwargs: kwargs, existing=10)  # pyright: ignore[reportUnknownLambdaType, reportUnknownVariableType, reportUnknownArgumentType]
+
+    cfg.update(Source(), skip_missing=True, existing=40, kwargs_only=50)
+
+    assert cfg._kwargs == {"existing": 40}
 
 
 def test_inline_config_update_non_dataclass_with_property():
