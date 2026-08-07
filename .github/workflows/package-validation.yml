@@ -46,5 +46,5 @@ jobs:
           uv run python -c "import configgle"
           rm -rf dist
           uv build --out-dir dist
-          wheel="$(ls dist/configgle-*.whl | head -n 1)"; uv run --isolated --with "$wheel" python -P -c "import configgle; print(configgle.__file__)"
+          wheels=(dist/configgle-*.whl); wheel="${wheels[0]}"; uv run --isolated --with "$wheel" python -P -c "import configgle; print(configgle.__file__)"
           uv run python bin/check_wheel.py
