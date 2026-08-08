@@ -115,13 +115,14 @@ last -- but it is NOT required to be; the pull-up phase legitimately follows it.
 
     class Sandwich:
         class Config(Fig["Sandwich"]):
-            bread: str = "sourdough"
-            topping: Topping.Config | None = None
+            portion_grams: int = 50
+            topping: Makeable[Topping] | None = None
 
             @override
             def finalize(self) -> Self:
                 if self.topping is not None:
-                    self.topping.portion = "double"  # pushdown (pre)
+                    # pushdown (pre): the child inherits the parent's portion.
+                    self.topping.portion_grams = self.portion_grams
                 return super().finalize()
 
 ``finalize`` mutates in place; the copy that protects the original happens once

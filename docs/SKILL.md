@@ -91,19 +91,19 @@ conv_momentum: float = 0.6  # only meaningful for the other
 
 # Good: the config carries the callable and its arguments. The step never
 # learns which optimizer it is running.
-optimizer: Makeable[OptimizerBuilder] = field(
-    default_factory=lambda: PartialConfig(single_group, build=...),
+optimizer: Makeable[Callable[..., Optimizer]] = field(
+    default_factory=CompositeOptimizer.Config,
 )
 ```
 
 Two consequences worth stating because they are easy to miss:
 
 - The per-branch hyperparameters disappear from the Config. `conv_momentum`
-  was noise for every run that used AdamW; it now lives where it applies, in
-  the `PartialConfig` that constructs Muon.
+  was noise for every run that used AdamW; it now lives where it applies, on
+  the `Muon.Config` that carries it.
 - The protocol is the contract. Declare what the slot must *do*
-  (`(model) -> list[Optimizer]`), not what it must *be*, so an implementation
-  the library has never seen still fits.
+  (`(model) -> Optimizer`), not what it must *be*, so an implementation the
+  library has never seen still fits.
 
 Prefer **mutation over nested keyword arguments** when building the injected
 config -- the same rule as house rule 1, and it matters more here because the
@@ -112,29 +112,30 @@ nesting gets deep:
 ```python
 # Bad: a wall of nested calls; the reader tracks parens to see what belongs
 # to which optimizer.
-cfg.step.optimizer = PartialConfig(
-    muon_and_sgd,
-    build_matrix=Muon.Config(),  # ... then lr, momentum, ns_steps
-    build_vector=PartialConfig(torch.optim.SGD, lr=0.67, momentum=0.85),
+cfg.step.optimizer = CompositeOptimizer.Config(
+    optimizers=[
+        PartialConfig(torch.optim.SGD, lr=0.67, momentum=0.85),
+        Muon.Config(lr=0.24, ns_steps=3),
+    ],
 )
 
 # Good: same line count, one assignment per fact, and each line's PATH says
 # what it configures -- no alias to resolve against a binding above.
-muon = cfg.step.optimizer = PartialConfig(muon_and_sgd)
-muon.build_matrix = Muon.Config()
-muon.build_matrix.lr = 0.24
-muon.build_matrix.momentum = 0.6
-muon.build_matrix.ns_steps = 3
-muon.build_vector = PartialConfig(torch.optim.SGD)
-muon.build_vector.lr = 0.67
-muon.build_vector.momentum = 0.85
+sgd, muon = cfg.step.optimizer.optimizers = [
+    PartialConfig(torch.optim.SGD),
+    Muon.Config(),
+]
+sgd.lr = 0.67
+sgd.momentum = 0.85
+muon.lr = 0.24
+muon.ns_steps = 3
 ```
 
 `PartialConfig.__setattr__` writes into its kwargs and `__getattr__` reads them
 back, so the dotted path keeps working at any depth and both forms build an
 identical partial. Bind a local only to shorten a genuinely long path, never to
-rename a short one -- `matrix.lr = 0.24` forces the reader to look up what
-`matrix` was; `muon.build_matrix.lr = 0.24` does not.
+rename a short one -- `m.lr = 0.24` forces the reader to look up what `m` was;
+`muon.lr = 0.24` does not.
 
 The one-line chained assignment introduces a slot and names it in the same
 breath, and applies to ordinary Config slots too:
@@ -208,31 +209,30 @@ Configgle separates **"what to build"** (Config) from **"how it works"**
    **All construction work goes there.**
 
 ```python
-from configgle import Fig
+from configgle import Fig, Makeable
 
 
 class Sandwich:
     class Config(Fig["Sandwich"]):
-        bread: Literal["sourdough", "rye", "white"] = "sourdough"
-        """Loaf used for the base."""
-
         portion_grams: int = 50
         """Default per-topping portion in grams."""
 
+        topping: Makeable[Topping] = field(default_factory=Topping.Config)
+        """The topping; any config that builds a Topping works."""
+
     def __init__(self, config: Config):
-        self.bread = config.bread
         self.portion_grams = config.portion_grams
+        self.topping = config.topping.make()
 
 
 cfg = Sandwich.Config()
-cfg.bread = "rye"
+cfg.portion_grams = 80
 sandwich = cfg.make()
 ```
 
-`bread: Literal[...]` instead of `bread: str` is the canonical Config
-idiom for enum-like fields: it documents the valid values, makes typos
-basedpyright errors at every call site, and lets `__init__` dispatch on
-the value without `cast` or string-matching guards.
+Note what is NOT here: no `bread_kind: Literal["sourdough", "rye"]` naming the
+choices the library happens to know. A scalar is a scalar and a choice is a
+slot -- see house rule 9.
 
 Rules:
 - Use `Fig["ClassName"]` for the standard case; `Makes["ClassName"]`
@@ -428,13 +428,26 @@ Add the assert **only** when the next line touches a field the narrowed
 subclass adds. Asserting before setting a *base-class* field (one the
 `Makeable[Protocol]` slot already exposes) is noise -- delete it.
 
-## Real Configs in the codebase
+Better still, narrow ONCE in a subclass so no factory needs the assert at all
+(the `priml` skill's `Cifar10TrainLoop`):
 
-- `loop/priml/model/*.py` -- `Conv2d`, `BatchNorm2d`, `Linear`, etc.;
+```python
+class Cifar10TrainLoop(Makes["TrainLoop"], TrainLoop.Config):
+    step: Cifar10TrainStep.Config = field(default_factory=Cifar10TrainStep.Config)
+```
+
+Use the per-factory assert when the slot type genuinely varies across
+experiments; use the subclass when a whole family shares one.
+
+## Real Configs to read
+
+The `priml` package is the reference consumer:
+
+- `priml/model/*.py` -- `Conv2d`, `BatchNorm2d`, `Linear`, etc.;
   sentinel-default `channels_in` / `channels_out` with `finalize()`
   propagation.
-- `loop/priml/train/train_loop.py` -- deeply-nested `TrainLoop.Config`
-  with real `Makeable[Protocol]` slots.
-- `loop/experimental/*/{experiments,model,train_step}.py` -- per-project
+- `priml/train/train_loop.py` -- deeply-nested `TrainLoop.Config` with
+  real `Makeable[Protocol]` slots.
+- `priml/baselines/*/{experiments,model,train_step}.py` -- per-study
   triple: `experiments.py` returns a fully-wired `TrainLoop.Config`;
   `model.py` / `train_step.py` define the domain-specific Configs.
