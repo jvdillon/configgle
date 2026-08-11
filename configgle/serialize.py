@@ -297,7 +297,7 @@ class _Encoder:
         if type(value) is tuple:
             # A namedtuple (tuple SUBCLASS) reduces instead, to keep its type;
             # only a bare tuple uses py/tuple.
-            tup = cast("tuple[object, ...]", value)  # ty: ignore[redundant-cast]
+            tup = cast("tuple[object, ...]", value)
             return {"py/tuple": self._encode_items(tup)}
         if type(value) is list:
             lst = cast("list[object]", value)
@@ -469,7 +469,7 @@ class _Encoder:
         # OrderedDict / enum round-trip faithfully.
         if not isinstance(reduced, tuple):
             return None
-        parts = list(cast("tuple[object, ...]", reduced))  # ty: ignore[redundant-cast]
+        parts = list(cast("tuple[object, ...]", reduced))
         if not (2 <= len(parts) <= 5) or not callable(parts[0]):
             return None
         if not isinstance(parts[1], tuple):
@@ -661,7 +661,7 @@ def _apply_state(obj: object, state: object) -> None:
     slots_state: object = None
     if isinstance(state, tuple):
         # basedpyright keeps state as tuple[Unknown, ...]; ty narrows it.
-        pair = cast("tuple[object, ...]", state)  # ty: ignore[redundant-cast]
+        pair = cast("tuple[object, ...]", state)
         if len(pair) == 2:
             dict_state, slots_state = pair
     if isinstance(dict_state, dict):
