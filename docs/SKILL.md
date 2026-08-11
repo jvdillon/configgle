@@ -105,6 +105,17 @@ Two consequences worth stating because they are easy to miss:
   (`(model) -> Optimizer`), not what it must *be*, so an implementation the
   library has never seen still fits.
 
+Spell a deferred-constructor slot `Makeable[Callable[..., Optimizer]]`, never
+`Makeable[partial[Optimizer]]`: typeshed declares `partial` invariant, so
+`partial[Muon]` does not satisfy `partial[Optimizer]` and every concrete
+optimizer is rejected. Never alias the resulting type -- a name hides the
+protocol from the reader and from the checker's error message.
+
+A slot holding a predicate (a selector, a filter) takes a comparable OBJECT,
+not a closure. Two closures with identical bodies are unequal and their `repr`
+carries an address, so a config holding one never equals its parent and the
+`pprint` diff shows a change on every run.
+
 Prefer **mutation over nested keyword arguments** when building the injected
 config -- the same rule as house rule 1, and it matters more here because the
 nesting gets deep:
@@ -240,8 +251,16 @@ Rules:
   itself (see `help(...)` for the mixin example).
 - All Configs must be default-constructable. **Every field needs a
   default and a one-line docstring** -- no exceptions. The docstring
-  goes on the line directly below the field. Code review rejects
-  Configs with undocumented fields.
+  goes on the line directly below the field. A missing default raises
+  `TypeError` naming the field at class-creation time; the
+  `require_defaults=False` escape hatch is not for experiment configs.
+  Code review rejects Configs with undocumented fields.
+- Configs are `slots=True`, so a misspelled assignment (`cfg.lrr = 0.01`)
+  raises `AttributeError` instead of silently creating a field nothing
+  reads. Do not add `__dict__` back.
+- The `Fig["Dog"]` parameter is type-checker-only. `__set_name__` binds
+  `parent_class` from the nesting, so bare `Fig` behaves identically at
+  runtime -- a wrong string is a typing bug, never a build failure.
 - Validate in `__init__`, never in `finalize()` -- `finalize()` also
   runs from `pprint` where raising obscures the real config.
 - Never use `__post_init__` -- it doesn't run after users mutate fields.
@@ -273,9 +292,17 @@ Pushdown dominates, so `super()` is usually last -- but it need not be.
 
 `finalize()` mutates in place -- it does **not** copy. The copy that
 protects the original happens once at the `make()` / `pprint` boundary
-(`copy_tree().finalize()`), so a config is finalized exactly once on a
-fresh tree (never re-finalized) and the one passed to `make()` is
-untouched.
+(`copy_tree().finalize()`), so a config is finalized once on a fresh
+tree and the one passed to `make()` is untouched.
+
+`make()` skips `finalize()` when `_finalized` is already set, which is what
+lets a parent's `__init__` rebuild a child via `config.child.make()` without
+re-running the child's derived defaults. A `finalize()` body may therefore
+assume it runs once per tree -- but only for an UNMUTATED config. Mutating
+after a finalize and finalizing again is out of contract and unguarded, so a
+non-idempotent body (one that prepends a path prefix, appends to a list)
+applies twice. Overriding `make()` means reproducing that guard; prefer
+overriding `finalize()` or `copy_tree()`, which are the designed hooks.
 
 ### Sentinel-propagation pattern
 
