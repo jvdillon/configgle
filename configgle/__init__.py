@@ -21,7 +21,10 @@ Fig and Fig["X"]
 
 - ``DataclassMeta`` -- auto-applies ``@dataclass`` with opinionated defaults
   (``kw_only=True``, ``slots=True``, ``require_defaults=True``), so every field
-  must have a default.
+  must have a default. A field without one raises ``TypeError`` naming it at
+  class-creation time; ``require_defaults=False`` disables the check.
+  ``slots=True`` also means a misspelled assignment (``cfg.lrr = 0.01``)
+  raises ``AttributeError`` rather than creating an attribute nothing reads.
 - ``MakerMeta`` -- uses ``__set_name__`` to capture the parent class when
   ``Config`` is defined as a nested class, enabling ``.make()`` to know what to
   construct.
@@ -127,8 +130,17 @@ last -- but it is NOT required to be; the pull-up phase legitimately follows it.
 
 ``finalize`` mutates in place; the copy that protects the original happens once
 at the ``make``/``pprint`` boundary (``copy_tree().finalize()``), so a config is
-finalized exactly once, on a fresh tree -- there is never a re-finalize. A
-config passed to ``make()`` is left untouched.
+finalized once, on a fresh tree. A config passed to ``make()`` is left
+untouched.
+
+``copy_tree`` preserves ``_finalized``, and ``make`` skips ``finalize`` when it
+is already set -- so a parent's ``__init__`` may rebuild a child with
+``config.child.make()`` without re-running the child's derived defaults. A
+``finalize`` body may therefore assume one run per tree, but only for an
+UNMUTATED config: mutating after a finalize and finalizing again is out of
+contract and unguarded, so a non-idempotent body (prepending a path prefix,
+appending to a list) applies twice. Overriding ``make`` means reproducing that
+guard; ``finalize`` and ``copy_tree`` are the designed hooks.
 
 Positional Fields (kw_only=False)
 ---------------------------------
@@ -222,6 +234,15 @@ config fields as kwargs instead of passing the config object.
 ``InlineConfig`` / ``PartialConfig`` -- Config wrappers for callables.
 ``InlineConfig(fn, **kw).make()`` calls ``fn(**kw)``.
 ``PartialConfig(fn, **kw).make()`` returns ``functools.partial(fn, **kw)``.
+
+Annotate the slot receiving one ``Makeable[Callable[..., Base]]``, never
+``Makeable[partial[Base]]``: typeshed declares ``partial`` invariant
+(``class partial(Generic[_T])`` over a plain ``TypeVar``), so ``partial[Sub]``
+does not satisfy ``partial[Base]`` and every concrete subclass is rejected.
+
+A slot holding a predicate takes a comparable object, not a closure. Two
+closures with identical bodies are unequal and their ``repr`` carries a memory
+address, so a config holding one never equals the config it was forked from.
 
 ``pprint`` / ``pformat`` -- Config-aware pretty printer. Hides defaults,
 auto-finalizes, masks memory addresses. Available as both module-level
