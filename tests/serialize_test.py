@@ -312,7 +312,7 @@ class ImmutableDag:
 def _roundtrip[T](cfg: T) -> T:
     # Round-trip through json.dumps/loads too, proving serialize() yields a
     # genuinely JSON-encodable tree (not just an in-memory structure).
-    return deserialize(json.loads(json.dumps(serialize(cfg))))
+    return cast("T", deserialize(json.loads(json.dumps(serialize(cfg)))))
 
 
 def test_scalar_fields_roundtrip():

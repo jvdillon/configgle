@@ -47,7 +47,7 @@ def _get_object_attribute_names(obj: object) -> Iterator[str]:
     seen = set[str]()
     if hasattr(type(obj), "__slots__"):
         for cls in type(obj).__mro__:
-            slots = getattr(cls, "__slots__", ())
+            slots: str | tuple[str, ...] = getattr(cls, "__slots__", ())
             if isinstance(slots, str):
                 slots = (slots,)
             for slot in slots:
@@ -218,7 +218,7 @@ def copy_tree[ValueT](
 
         return cast(ValueT, _copy_slots(value, visited))
 
-    return type(value)(copied)  # pyright: ignore[reportCallIssue,reportUnknownArgumentType,reportUnknownVariableType] -- reconstruct the original container type from the copied items; the element type is erased at runtime.
+    return type(value)(copied)  # ty: ignore[unsound-return-statement]  # pyright: ignore[reportCallIssue,reportUnknownArgumentType,reportUnknownVariableType] -- reconstruct the original container type from the copied items; the element type is erased at runtime.
 
 
 def _finalize_value[ValueT](value: ValueT) -> ValueT:
@@ -296,7 +296,7 @@ def _finalize_value[ValueT](value: ValueT) -> ValueT:
         return value
 
     # Reconstruct the container with the finalized items.
-    return type(value)(finalized)  # pyright: ignore[reportCallIssue,reportUnknownArgumentType,reportUnknownVariableType] -- reconstruct the original container type from the finalized items; the element type is erased at runtime.
+    return type(value)(finalized)  # ty: ignore[unsound-return-statement]  # pyright: ignore[reportCallIssue,reportUnknownArgumentType,reportUnknownVariableType] -- reconstruct the original container type from the finalized items; the element type is erased at runtime.
 
 
 def _make_value[ValueT](

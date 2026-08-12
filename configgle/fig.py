@@ -580,12 +580,14 @@ class _DataclassParams:
         )
 
     def __getitem__(self, key: str) -> bool:
-        return getattr(self, key)
+        value = getattr(self, key)
+        assert isinstance(value, bool)
+        return value
 
     def __iter__(self) -> Iterator[str]:
         seen = set[str]()
         for c in type(self).__mro__:
-            slots = getattr(c, "__slots__", ())
+            slots: str | tuple[str, ...] = getattr(c, "__slots__", ())
             if isinstance(slots, str):
                 slots = (slots,)
             for s in slots:
