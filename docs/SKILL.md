@@ -186,7 +186,7 @@ def exp001():
 **Name a constant only when the name carries meaning the number doesn't.**
 `NUM_TRAIN_SAMPLES = 50_000` earns its name -- it is a fact about the dataset,
 fixed and non-obvious. A batch size does not: it is a tunable that belongs on
-the config, where `check-config-globals` will insist it lives.
+the config, where `check-globals` will insist it lives.
 
 **Don't hoist shared setup into a helper.** A `set_epochs(cfg, 8)` that mutates
 four fields is fewer lines and strictly worse: the reader must open it to learn
