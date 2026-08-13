@@ -36,6 +36,9 @@ in-`finalize` build is fighting the pattern.
    assert the `Path`) -- never the raw `"{scratch_dir}/..."` template.
 4. **Don't bloat a Config.** A variant is a new small injected Config, not a pile
    of flags/branches on an existing class. Need a test variant? Roll/inject one.
+   This holds at every scale: a whole new problem is also values in existing
+   slots, so reaching for a new module -- or a new shared layer -- to hold a
+   different size or vocabulary is the same mistake as adding a flag.
 5. **No global or environment state.** Don't define module-level variables or
    read environment variables to determine Config values; write every
    experiment-affecting value as a Config field. No `scratch_dir(...)` pulls,
