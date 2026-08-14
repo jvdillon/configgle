@@ -206,13 +206,22 @@ def _dotted_name(obj: object) -> str:
     # The single choke point for every recorded reference: rejecting a non-
     # importable path (``<locals>``) here makes a local class / lambda fail loudly
     # at serialize time rather than producing an un-loadable tree.
-    if not isinstance(obj, _Named) or "<locals>" in obj.__qualname__:
+    if not isinstance(obj, _Named):
         raise TypeError(
             f"Cannot serialize {obj!r}: it has no importable path "
             f"(module-level __qualname__). Local/lambda callables and local "
             f"classes/subclasses cannot be deserialized.",
         )
-    path = f"{obj.__module__}.{obj.__qualname__}"
+    # basedpyright does not narrow `object` through a Protocol whose only members
+    # are dunders already declared on `object`; the annotated bind does.
+    named: _Named = obj
+    if "<locals>" in named.__qualname__:
+        raise TypeError(
+            f"Cannot serialize {obj!r}: it has no importable path "
+            f"(module-level __qualname__). Local/lambda callables and local "
+            f"classes/subclasses cannot be deserialized.",
+        )
+    path = f"{named.__module__}.{named.__qualname__}"
     try:
         resolved = _resolve(path)
     except (AttributeError, ImportError) as error:
