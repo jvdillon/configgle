@@ -119,6 +119,6 @@ def test_autofig_with_broken_type_hints():
 
 
 if __name__ == "__main__":
-    import pytest
+    from configgle.lib.testing.main import test_main
 
-    pytest.main([__file__, "-v"])
+    test_main(__file__)

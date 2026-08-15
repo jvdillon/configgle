@@ -115,7 +115,7 @@ from collections.abc import (
     Sequence,
     Set as AbstractSet,
 )
-from types import MappingProxyType
+from types import MappingProxyType, ModuleType
 from typing import Any, Protocol, cast, runtime_checkable
 
 import base64
@@ -128,6 +128,7 @@ from configgle.walk import _get_object_attribute_names
 
 
 __all__ = [
+    "Hooks",
     "deserialize",
     "serialize",
 ]
@@ -201,6 +202,20 @@ class _Named(Protocol):
     __qualname__: str
 
 
+def _is_import_reference(value: object) -> bool:
+    """True if ``value`` is reachable by its own dotted ``module.qualname`` path.
+
+    A module-level function, builtin, or class is. A BOUND method is not: its
+    ``__qualname__`` (``str.join``) names the UNBOUND function, so recording that
+    path would silently drop the receiver. ``__self__`` distinguishes them --
+    module-valued for a plain function, the receiver for a bound one.
+    """
+    if not isinstance(value, _Named):
+        return False
+    receiver = getattr(value, "__self__", None)
+    return receiver is None or isinstance(receiver, ModuleType)
+
+
 def _dotted_name(obj: object) -> str:
     """Return the dotted ``module.qualname`` path for a class or function."""
     # The single choke point for every recorded reference: rejecting a non-
@@ -221,7 +236,11 @@ def _dotted_name(obj: object) -> str:
             f"(module-level __qualname__). Local/lambda callables and local "
             f"classes/subclasses cannot be deserialized.",
         )
-    path = f"{named.__module__}.{named.__qualname__}"
+    return _verified_path(f"{named.__module__}.{named.__qualname__}", obj)
+
+
+def _verified_path(path: str, obj: object) -> str:
+    """Return ``path`` once it resolves back to ``obj``; raise otherwise."""
     try:
         resolved = _resolve(path)
     except (AttributeError, ImportError) as error:
@@ -297,8 +316,16 @@ class _Encoder:
         if hook is not None:
             return self._encode_hook(value, hook[0])
 
-        if callable(value) and not isinstance(
-            value, (InlineConfig, tuple, Sequence, Mapping, AbstractSet)
+        # ``py/function`` records an IMPORT PATH, so it fits only a value that IS
+        # one. A callable instance (functools.partial, an nn.Module, a Fig
+        # defining __call__) and a bound method both carry state no path can
+        # name, so they belong in the __reduce__ fallback below.
+        if (
+            _is_import_reference(value)
+            and callable(value)
+            and not isinstance(
+                value, (InlineConfig, tuple, Sequence, Mapping, AbstractSet)
+            )
         ):
             return {"py/function": _dotted_name(value)}
         if isinstance(value, InlineConfig):
@@ -306,7 +333,7 @@ class _Encoder:
         if type(value) is tuple:
             # A namedtuple (tuple SUBCLASS) reduces instead, to keep its type;
             # only a bare tuple uses py/tuple.
-            tup = cast("tuple[object, ...]", value)
+            tup = cast("tuple[object, ...]", value)  # ty: ignore[redundant-cast] -- basedpyright keeps tuple[Unknown, ...] without it
             return {"py/tuple": self._encode_items(tup)}
         if type(value) is list:
             lst = cast("list[object]", value)
@@ -467,8 +494,12 @@ class _Encoder:
             return None
 
         # Form 1: a bare string is a global-name reference in the object's module.
+        # Verified like every other recorded reference, so a name that does not
+        # resolve fails HERE rather than producing an un-loadable tree.
         if isinstance(reduced, str):
-            return {"py/type": f"{type(value).__module__}.{reduced}"}
+            return {
+                "py/type": _verified_path(f"{type(value).__module__}.{reduced}", value)
+            }
 
         # Form 2: the full pickle reduce tuple
         # (callable, args, state?, listitems?, dictitems?). Emitted as
@@ -545,7 +576,18 @@ class _Decoder:
         node = cast("dict[str, Any]", data)
 
         if "py/id" in node:
-            return self._built[cast(int, node["py/id"])]
+            # A wire index, not a Python one: a negative value would silently
+            # alias the most recent object instead of failing on corrupt input.
+            # ``bool`` is excluded explicitly -- it is an ``int`` subclass, so a
+            # JSON ``true`` would otherwise pass as index 1.
+            index = node["py/id"]
+            if (
+                not isinstance(index, int)
+                or isinstance(index, bool)
+                or not 0 <= index < len(self._built)
+            ):
+                raise ValueError(f"Invalid py/id reference: {index!r}")
+            return self._built[index]
         if "py/type" in node:
             return _resolve(cast(str, node["py/type"]))
         if "py/function" in node:
@@ -683,14 +725,8 @@ def _apply_state(obj: object, state: object) -> None:
 
 def _is_data_object(value: object) -> bool:
     """True for a dataclass instance or any object carrying its own __slots__."""
-    return _is_data_class(type(value))
-
-
-def _is_data_class(cls: type) -> bool:
-    """True for a dataclass or a class carrying its own ``__slots__``."""
-    return bool(
-        hasattr(cls, "__dataclass_fields__") or "__slots__" in cls.__dict__,
-    )
+    cls = type(value)
+    return bool(hasattr(cls, "__dataclass_fields__") or "__slots__" in cls.__dict__)
 
 
 def _has_finalized_slot(cls: type) -> bool:

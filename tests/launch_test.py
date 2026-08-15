@@ -161,4 +161,6 @@ def test_docstring_example_defaults_run_unchanged(tmp_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    from configgle.lib.testing.main import test_main
+
+    test_main(__file__)
