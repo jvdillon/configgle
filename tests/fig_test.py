@@ -562,8 +562,9 @@ def test_inline_config_satisfies_makeable():
 def test_makeable_requires_more_than_the_three_methods():
     """make/finalize/update alone do not satisfy Makeable.
 
-    Guards the documented contract: _finalized and parent_class are part of
-    the protocol, so a three-method class is rejected by isinstance.
+    Guards the documented contract: ``_finalized``, ``parent_class``, and
+    ``copy_tree`` belong to the protocol too, so a class carrying only the
+    three obvious methods is rejected by isinstance.
     """
 
     class ThreeMethods:
@@ -576,12 +577,16 @@ def test_makeable_requires_more_than_the_three_methods():
         def update(self, *_args: object, **_kwargs: object) -> Self:
             return self
 
-    class FiveMembers(ThreeMethods):
+    class EveryMember(ThreeMethods):
         _finalized = False
         parent_class = None
 
+        def copy_tree(self, visited: dict[int, object] | None = None) -> Self:
+            del visited
+            return self
+
     assert not isinstance(ThreeMethods(), Makeable)
-    assert isinstance(FiveMembers(), Makeable)
+    assert isinstance(EveryMember(), Makeable)
 
 
 def test_require_defaults_error_message():
