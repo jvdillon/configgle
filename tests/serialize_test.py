@@ -9,7 +9,9 @@ from types import MappingProxyType
 from typing import Any, NamedTuple, Self, SupportsIndex, cast, override
 
 import enum
+import functools
 import json
+import operator
 import pickle
 
 import pytest
@@ -443,6 +445,122 @@ def _stale_redefined_fn(value: int) -> int:
 
 def _live_redefined_fn(value: int) -> int:
     return value + 2
+
+
+class Accumulator:
+    """A stateful callable: reduces like a torch ``nn.Module`` field would."""
+
+    def __init__(self, base: int) -> None:
+        self.base = base
+
+    def __call__(self, value: int) -> int:
+        return self.base + value
+
+
+class CallableLeaf:
+    class Config(Fig["CallableLeaf"]):
+        v: int = 1
+
+        def __call__(self) -> int:
+            return self.v
+
+    def __init__(self, config: Config) -> None:
+        del config
+
+
+class ReducesToMissingGlobal:
+    @override
+    def __reduce__(self) -> str:
+        return "_NO_SUCH_MODULE_GLOBAL"
+
+
+def test_callable_instance_falls_back_to_reduce():
+    """A picklable CALLABLE instance reduces; it is not a py/function reference.
+
+    ``py/function`` records an IMPORT PATH, which only a true reference (function,
+    builtin, class) has. An instance that merely defines ``__call__`` has no own
+    ``__qualname__``, so it must take the documented ``__reduce__`` fallback.
+    """
+    back = deserialize(serialize(functools.partial(operator.add, 1)))
+    assert back(5) == 6
+
+
+def test_callable_module_roundtrips_by_reduce():
+    """A callable object with state (an ``nn.Module``-shaped leaf) keeps its state."""
+    back = deserialize(serialize(Accumulator(3)))
+    assert isinstance(back, Accumulator)
+    assert back(4) == 7
+
+
+def test_bound_method_roundtrips_by_reduce():
+    """A BOUND method is not an import reference -- its receiver carries the state.
+
+    ``"".join`` has a ``__qualname__`` (``str.join``), but that path resolves to
+    the UNBOUND function, so recording it would silently drop the receiver. It
+    pickles as ``getattr(obj, name)``; the reduce fallback must own it.
+    """
+    back = deserialize(serialize("-".join))
+    assert back(["a", "b"]) == "a-b"
+
+
+def test_classmethod_roundtrips_by_reduce():
+    """A bound classmethod is the same shape: bound to the class, not a module."""
+    back = deserialize(serialize(dict.fromkeys))
+    assert back(["a"]) == {"a": None}
+
+
+def test_callable_config_encodes_as_object():
+    """A Fig that defines ``__call__`` is still a config, not a function reference."""
+    tree = serialize(CallableLeaf.Config(v=5))
+    assert "py/object" in tree
+    back = deserialize(tree)
+    assert isinstance(back, CallableLeaf.Config)
+    assert back.v == 5
+
+
+def test_bare_string_reduce_rejects_unresolvable_global():
+    """CFG-SER-005: a bare-string reduce naming no real global fails at serialize.
+
+    ``_dotted_name`` is the choke point for every recorded reference; the
+    bare-string ``__reduce__`` form must go through it too, so an unimportable
+    path cannot produce a tree that only fails at decode.
+    """
+    with pytest.raises(TypeError, match=r"does not resolve|no importable path"):
+        serialize(ReducesToMissingGlobal())
+
+
+@pytest.mark.parametrize("ref", [-1, True, 1.0, "1", None])
+def test_deserialize_rejects_non_index_ref(ref: object):
+    """CFG-SER-006: only a nonnegative int is a ``py/id``; the rest are corrupt.
+
+    The wire contract numbers encounters 0, 1, 2, ..., so ``-1`` would silently
+    ALIAS the most recent object -- worse than raising. ``True`` is the same hole
+    one level down: ``bool`` is an ``int`` subclass, so a JSON ``true`` would
+    otherwise index 1.
+    """
+    with pytest.raises(ValueError, match="py/id"):
+        deserialize([{"a": 1}, {"py/id": ref}])
+
+
+class AngryAttrs:
+    """A callable whose attribute lookup raises something ``hasattr`` won't catch."""
+
+    def __call__(self) -> int:
+        return 1
+
+    def __getattr__(self, name: str) -> object:
+        raise RuntimeError(f"attribute lookup is not safe here: {name}")
+
+
+def test_callable_with_hostile_getattr_still_serializes():
+    """Deciding "is this an import reference?" must not run arbitrary code.
+
+    ``hasattr`` swallows only ``AttributeError``, so a ``__getattr__`` raising
+    anything else escapes it; the Protocol check answers the same question
+    without propagating.
+    """
+    back = deserialize(serialize(AngryAttrs()))
+    assert isinstance(back, AngryAttrs)
 
 
 def test_class_and_function_reference_roundtrip():
@@ -1087,4 +1205,6 @@ def test_bare_string_reduce_roundtrips_as_global_reference():
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    from configgle.lib.testing.main import test_main
+
+    test_main(__file__)

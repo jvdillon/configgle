@@ -501,4 +501,6 @@ class TestDataclassCodec:
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    from configgle.lib.testing.main import test_main
+
+    test_main(__file__)

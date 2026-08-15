@@ -1128,4 +1128,6 @@ def test_parent_rebuilding_child_in_init_finalizes_child_once():
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    from configgle.lib.testing.main import test_main
+
+    test_main(__file__)

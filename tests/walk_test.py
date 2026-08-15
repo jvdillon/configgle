@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import field
 from typing import NamedTuple, Self, cast, override
 
-import pytest
-
 from configgle.fig import Fig
 from configgle.walk import (
     _get_object_attribute_names,
@@ -374,4 +372,6 @@ def test_copy_tree_dag_in_list():
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    from configgle.lib.testing.main import test_main
+
+    test_main(__file__)
