@@ -259,6 +259,7 @@ dev = [
     { name = "build", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "cloudpickle", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "codespell", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "nodejs-wheel-binaries", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pre-commit", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pytest", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pytest-cov", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -272,7 +273,6 @@ dev = [
 ]
 lint = [
     { name = "codespell", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "pre-commit", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "ruff", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 pre-commit = [
@@ -280,6 +280,7 @@ pre-commit = [
     { name = "basedtyping", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "cloudpickle", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "codespell", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "nodejs-wheel-binaries", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pre-commit", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pytest", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pytest-cov", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -296,6 +297,7 @@ publish = [
 ]
 test = [
     { name = "cloudpickle", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "nodejs-wheel-binaries", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pytest", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pytest-cov", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pytest-testmon", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -319,6 +321,7 @@ dev = [
     { name = "build" },
     { name = "cloudpickle" },
     { name = "codespell", specifier = ">=2.2.4" },
+    { name = "nodejs-wheel-binaries", specifier = ">=24.16.0" },
     { name = "pre-commit", specifier = ">=4.6" },
     { name = "pytest", specifier = ">=7.0" },
     { name = "pytest-cov" },
@@ -332,7 +335,6 @@ dev = [
 ]
 lint = [
     { name = "codespell", specifier = ">=2.2.4" },
-    { name = "pre-commit", specifier = ">=4.6" },
     { name = "ruff" },
 ]
 pre-commit = [
@@ -340,6 +342,7 @@ pre-commit = [
     { name = "basedtyping", specifier = ">=0.1.10" },
     { name = "cloudpickle" },
     { name = "codespell", specifier = ">=2.2.4" },
+    { name = "nodejs-wheel-binaries", specifier = ">=24.16.0" },
     { name = "pre-commit", specifier = ">=4.6" },
     { name = "pytest", specifier = ">=7.0" },
     { name = "pytest-cov" },
@@ -356,6 +359,7 @@ publish = [
 ]
 test = [
     { name = "cloudpickle" },
+    { name = "nodejs-wheel-binaries", specifier = ">=24.16.0" },
     { name = "pytest", specifier = ">=7.0" },
     { name = "pytest-cov" },
     { name = "pytest-testmon", specifier = ">=2.1" },
