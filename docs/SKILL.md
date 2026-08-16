@@ -264,8 +264,13 @@ Rules:
 - The `Fig["Dog"]` parameter is type-checker-only. `__set_name__` binds
   `parent_class` from the nesting, so bare `Fig` behaves identically at
   runtime -- a wrong string is a typing bug, never a build failure.
-- Validate in `__init__`, never in `finalize()` -- `finalize()` also
-  runs from `pprint` where raising obscures the real config.
+- Validate in `__init__`, never in `finalize()`. `pprint` still prints --
+  it catches the raise and downgrades it to a `UserWarning` -- but it
+  prints the tree you TYPED, since the finalize that would have filled
+  the derived values is the thing that failed. So the config you most
+  need to inspect is the one whose propagated widths, resolved paths,
+  and inferred heads are all missing, and the reason is two warnings
+  deep. Raising costs the finalized view, not the view.
 - Never use `__post_init__` -- it doesn't run after users mutate fields.
 
 When `__init__` grows past two or three structural decisions
