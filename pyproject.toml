@@ -80,12 +80,12 @@ build-backend = "hatchling.build"
 
 # Tool settings: single source of truth.
 # Preferred location for any tool setting, in order:
-#   pyproject.toml  >  .pre-commit-config.yaml  >  .github/workflows/tests.yml
+#   pyproject.toml  >  .pre-commit-config.yaml  >  .github/workflows/ci.yml
 # Put a setting as high in this chain as the tool allows. Only drop to a lower
 # file when the higher one cannot express it (e.g. a CLI-only flag with no
 # config key). pyproject.toml holds tool config; .pre-commit-config.yaml is the
 # sole source for how hooks run (thread/worker counts, heap caps);
-# .github/workflows/tests.yml only invokes the hooks and must not redefine any
+# .github/workflows/ci.yml only invokes the hooks and must not redefine any
 # of these.
 
 [tool.hatch.build.targets.wheel]
@@ -142,7 +142,9 @@ markers = [
     "gpu_torch_cuda: requires torch CUDA execution",
     "gpu_triton: requires Triton kernels",
     "network_anthropic: reaches Anthropic over the network",
+    "network_duckduckgo: reaches DuckDuckGo over the network",
     "network_gemini: reaches Gemini over the network",
+    "network_google_search: reaches Google Search over the network",
     "network_github: reaches GitHub over the network",
     "network_huggingface: reaches Hugging Face over the network",
     "network_kaggle: reaches Kaggle over the network",
