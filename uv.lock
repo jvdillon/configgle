@@ -314,7 +314,7 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff" },
     { name = "twine" },
-    { name = "ty", specifier = ">=0.0.60" },
+    { name = "ty", specifier = ">=0.0.60,!=0.0.73" },
     { name = "typing-extensions" },
 ]
 lint = [
@@ -333,7 +333,7 @@ pre-commit = [
     { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff" },
-    { name = "ty", specifier = ">=0.0.60" },
+    { name = "ty", specifier = ">=0.0.60,!=0.0.73" },
     { name = "typing-extensions" },
 ]
 publish = [
@@ -351,7 +351,7 @@ test = [
 typecheck = [
     { name = "basedpyright", specifier = ">=1.10" },
     { name = "basedtyping", specifier = ">=0.1.10" },
-    { name = "ty", specifier = ">=0.0.60" },
+    { name = "ty", specifier = ">=0.0.60,!=0.0.73" },
     { name = "typing-extensions" },
 ]
 
