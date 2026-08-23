@@ -1,5 +1,4 @@
 # Polyfill for ty_extensions.Intersection.
-# ty has this module built-in (vendored into typeshed/stdlib); this polyfill
 # provides the same API for other type checkers and at runtime.
 # Intersection[A, B] approximates as A since basedpyright lacks native
 # intersection support.

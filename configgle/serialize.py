@@ -293,16 +293,15 @@ class _Encoder:
         value_type = type(value)
         if value is None or value_type in (bool, int, str):
             return value
-        if value_type is float:
-            fvalue = cast(float, value)
-            if not math.isfinite(fvalue):
+        if value_type is float and isinstance(value, float):
+            if not math.isfinite(value):
                 # inf/nan are not valid strict JSON. A NON-registering value tag
                 # (like py/b64) -- NOT py/reduce -- so it consumes no encounter
                 # index on either side (a float is a value leaf, never shared).
-                return {"py/float": repr(fvalue)}
+                return {"py/float": repr(value)}
             return value
-        if value_type is bytes:
-            return {"py/b64": base64.b64encode(cast(bytes, value)).decode("ascii")}
+        if value_type is bytes and isinstance(value, bytes):
+            return {"py/b64": base64.b64encode(value).decode("ascii")}
         if isinstance(value, type):
             return {"py/type": _dotted_name(value)}
 
@@ -329,21 +328,21 @@ class _Encoder:
         ):
             return {"py/function": _dotted_name(value)}
         if isinstance(value, InlineConfig):
-            return self._encode_inline(cast("InlineConfig[object]", value))
+            return self._encode_inline(cast(InlineConfig[object], value))
         if type(value) is tuple:
             # A namedtuple (tuple SUBCLASS) reduces instead, to keep its type;
             # only a bare tuple uses py/tuple.
-            tup = cast("tuple[object, ...]", value)  # ty: ignore[redundant-cast] -- basedpyright keeps tuple[Unknown, ...] without it
+            tup = cast(tuple[object, ...], value)  # ty: ignore[redundant-cast] -- basedpyright keeps tuple[Unknown, ...] without it
             return {"py/tuple": self._encode_items(tup)}
         if type(value) is list:
-            lst = cast("list[object]", value)
+            lst = cast(list[object], value)
             self._register(lst)
             return [self.encode(v) for v in lst]
         if type(value) is set:
             # A set SUBCLASS reduces; only a bare set uses py/set.
-            return self._encode_set(cast("AbstractSet[object]", value))
+            return self._encode_set(cast(AbstractSet[object], value))
         if type(value) is dict:
-            return self._encode_mapping(cast("Mapping[object, object]", value))
+            return self._encode_mapping(cast(Mapping[object, object], value))
         # A list/dict/set SUBCLASS, a namedtuple, or a frozenset -- anything whose
         # exact type matters -- falls through to the __reduce__ fallback, which
         # records the type and reconstructs it faithfully.
@@ -369,7 +368,7 @@ class _Encoder:
         if type(value) is MappingProxyType:
             # basedpyright sees MappingProxyType[Unknown, Unknown] here; the cast
             # gives dict() a concrete element type.
-            proxy = cast("Mapping[object, object]", value)
+            proxy = cast(Mapping[object, object], value)
             return {
                 "py/reduce": [
                     {"py/type": "types.MappingProxyType"},
@@ -382,12 +381,12 @@ class _Encoder:
         # type is lost, its data round-trips. Keeps serialize total over odd
         # container types (configgle extension; jsonpickle would reduce or fail).
         if isinstance(value, Mapping):
-            return self._encode_mapping(cast("Mapping[object, object]", value))
+            return self._encode_mapping(cast(Mapping[object, object], value))
         if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
             self._register(value)
-            return [self.encode(v) for v in cast("Sequence[object]", value)]
+            return [self.encode(v) for v in cast(Sequence[object], value)]
         if isinstance(value, AbstractSet):
-            return self._encode_set(cast("AbstractSet[object]", value))
+            return self._encode_set(cast(AbstractSet[object], value))
 
         raise TypeError(
             f"Cannot serialize leaf of type {type(value).__name__!r}. "
@@ -438,7 +437,7 @@ class _Encoder:
         needs_escape = any(isinstance(k, str) and _is_reserved_key(k) for k, _ in items)
         self._register(value)
         if type(value) is dict and str_keyed and not needs_escape:
-            return {cast(str, k): self.encode(v) for k, v in items}
+            return {str(k): self.encode(v) for k, v in items}
         return {self._encode_key(k): self.encode(v) for k, v in items}
 
     def _encode_key(self, key: object) -> str:
@@ -509,7 +508,7 @@ class _Encoder:
         # OrderedDict / enum round-trip faithfully.
         if not isinstance(reduced, tuple):
             return None
-        parts = list(cast("tuple[object, ...]", reduced))
+        parts = list(cast(tuple[object, ...], reduced))
         if not (2 <= len(parts) <= 5) or not callable(parts[0]):
             return None
         if not isinstance(parts[1], tuple):
@@ -517,9 +516,9 @@ class _Encoder:
         # Elements 4 and 5 (listitems / dictitems) are ITERATORS; materialize
         # them to concrete sequences before encoding. dictitems -> list of pairs.
         if len(parts) >= 4 and parts[3] is not None:
-            parts[3] = list(cast("Sequence[object]", parts[3]))
+            parts[3] = list(cast(Sequence[object], parts[3]))
         if len(parts) >= 5 and parts[4] is not None:
-            parts[4] = list(cast("Sequence[tuple[object, object]]", parts[4]))
+            parts[4] = list(cast(Sequence[tuple[object, object]], parts[4]))
         # A reduce object is registered for identity ONLY if it is built-then-
         # mutated (state / listitems / dictitems present) -- an existing object a
         # member can back-reference (a real cycle target, e.g. OrderedDict or a
@@ -569,11 +568,11 @@ class _Decoder:
             # A native JSON array is a mutable list -- registered for identity.
             result: list[object] = []
             self._built.append(result)
-            result.extend(self.decode(v) for v in cast("list[object]", data))
+            result.extend(self.decode(v) for v in cast(list[object], data))
             return result
         if not isinstance(data, dict):
             raise TypeError(f"Unexpected JSON node: {type(data)!r}")
-        node = cast("dict[str, Any]", data)
+        node = cast(dict[str, Any], data)
 
         if "py/id" in node:
             # A wire index, not a Python one: a negative value would silently
@@ -589,18 +588,18 @@ class _Decoder:
                 raise ValueError(f"Invalid py/id reference: {index!r}")
             return self._built[index]
         if "py/type" in node:
-            return _resolve(cast(str, node["py/type"]))
+            return _resolve(str(node["py/type"]))
         if "py/function" in node:
-            return _resolve(cast(str, node["py/function"]))
+            return _resolve(str(node["py/function"]))
         if "py/tuple" in node:
             return tuple(self.decode(v) for v in node["py/tuple"])
         if "py/set" in node:
             return self._decode_set(node)
         if "py/b64" in node:
-            return base64.b64decode(cast(str, node["py/b64"]))
+            return base64.b64decode(str(node["py/b64"]))
         if "py/float" in node:
             # A value leaf -- no _built append, symmetric with encode.
-            return float(cast(str, node["py/float"]))
+            return float(str(node["py/float"]))
         if "py/reduce" in node:
             return self._decode_reduce(node)
         if "py/hook" in node:
@@ -637,14 +636,14 @@ class _Decoder:
         # decoding the parts and fill it in. A pure (callable, args) reduce is an
         # atomic immutable value -- NOT registered on encode -- so it must NOT
         # consume a _built index here either (index parity).
-        elements = cast("list[Any]", node["py/reduce"])
+        elements = cast(list[Any], node["py/reduce"])
         is_mutable_target = any(e is not None for e in elements[2:])
         index = -1
         if is_mutable_target:
             index = len(self._built)
             self._built.append(None)
         func = self.decode(elements[0])
-        args = cast("tuple[object, ...]", self.decode(elements[1]))
+        args = cast(tuple[object, ...], self.decode(elements[1]))
         obj = func(*args)
         if is_mutable_target:
             self._built[index] = obj
@@ -659,15 +658,15 @@ class _Decoder:
         return obj
 
     def _decode_hook(self, node: dict[str, Any]) -> object:
-        path, payload = cast("list[Any]", node["py/hook"])
-        _, decode = self._hooks[_resolve(cast(str, path))]
+        path, payload = cast(list[Any], node["py/hook"])
+        _, decode = self._hooks[_resolve(str(path))]
         obj = decode(payload)
         self._built.append(obj)
         return obj
 
     def _decode_inline(self, node: dict[str, Any]) -> object:
-        path, payload = cast("list[Any]", node["py/inline"])
-        cls: Any = _resolve(cast(str, path))
+        path, payload = cast(list[Any], node["py/inline"])
+        cls: Any = _resolve(str(path))
         # Reconstruct the stored InlineConfig state directly rather than calling
         # the constructor: PartialConfig.__init__ rewraps its func in
         # functools.partial, but the serialized state is already the post-wrap
@@ -684,7 +683,7 @@ class _Decoder:
         return obj
 
     def _decode_object(self, node: dict[str, Any]) -> object:
-        cls: Any = _resolve(cast(str, node["py/object"]))
+        cls: Any = _resolve(str(node["py/object"]))
         # Build empty, register for cycles, then fill fields (a field may point
         # back at this node). Bypass __init__ so no field ordering is assumed.
         obj = cls.__new__(cls)
@@ -712,14 +711,14 @@ def _apply_state(obj: object, state: object) -> None:
     slots_state: object = None
     if isinstance(state, tuple):
         # basedpyright keeps state as tuple[Unknown, ...]; ty narrows it.
-        pair = cast("tuple[object, ...]", state)
+        pair = cast(tuple[object, ...], state)
         if len(pair) == 2:
             dict_state, slots_state = pair
     if isinstance(dict_state, dict):
-        for key, val in cast("dict[str, object]", dict_state).items():
+        for key, val in cast(dict[str, object], dict_state).items():
             object.__setattr__(obj, key, val)
     if isinstance(slots_state, dict):
-        for key, val in cast("dict[str, object]", slots_state).items():
+        for key, val in cast(dict[str, object], slots_state).items():
             object.__setattr__(obj, key, val)
 
 
