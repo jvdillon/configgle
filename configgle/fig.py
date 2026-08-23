@@ -587,9 +587,15 @@ class _DataclassParams:
     def __iter__(self) -> Iterator[str]:
         seen = set[str]()
         for c in type(self).__mro__:
-            slots: str | tuple[str, ...] = getattr(c, "__slots__", ())
-            if isinstance(slots, str):
-                slots = (slots,)
+            # CPython accepts ANY iterable of identifiers for ``__slots__`` --
+            # a list and a set are as legal as a tuple -- so narrowing to
+            # ``str | tuple`` would silently drop every field of such a class.
+            raw_slots = getattr(c, "__slots__", ())
+            slots = (
+                (raw_slots,)
+                if isinstance(raw_slots, str)
+                else (str(name) for name in raw_slots)
+            )
             for s in slots:
                 if s in seen:
                     continue

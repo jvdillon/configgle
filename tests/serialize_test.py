@@ -314,7 +314,7 @@ class ImmutableDag:
 def _roundtrip[T](cfg: T) -> T:
     # Round-trip through json.dumps/loads too, proving serialize() yields a
     # genuinely JSON-encodable tree (not just an in-memory structure).
-    return cast("T", deserialize(json.loads(json.dumps(serialize(cfg)))))
+    return cast(T, deserialize(json.loads(json.dumps(serialize(cfg)))))
 
 
 def test_scalar_fields_roundtrip():
@@ -736,7 +736,7 @@ def test_cycle_through_list_roundtrips():
     cfg = Cyclic.Config()
     cfg.peer = [cfg]  # a -> [a]
     back = _roundtrip(cfg)
-    assert cast("list[object]", back.peer)[0] is back
+    assert cast(list[object], back.peer)[0] is back
 
 
 def test_cycle_through_frozenset_member_roundtrips():
@@ -750,7 +750,7 @@ def test_cycle_through_frozenset_member_roundtrips():
     a = Hashable.Config(tag=1)
     a.peers = frozenset({a})  # a in a.peers
     back = _roundtrip(a)
-    assert next(iter(cast("frozenset[object]", back.peers))) is back
+    assert next(iter(cast(frozenset[object], back.peers))) is back
     assert back.tag == 1
 
 
@@ -782,9 +782,9 @@ def test_cycle_through_tuple_target_roundtrips():
     cfg = Cyclic.Config(v=1)
     holder: tuple[object, ...] = (cfg,)
     cfg.peer = holder  # cfg -> (cfg,) -> cfg
-    back = cast("tuple[object, ...]", _roundtrip(holder))
+    back = cast(tuple[object, ...], _roundtrip(holder))
     inner = cast(Cyclic.Config, back[0])
-    assert cast("tuple[object, ...]", inner.peer)[0] is inner
+    assert cast(tuple[object, ...], inner.peer)[0] is inner
 
 
 def test_cycle_through_frozenset_from_mutable_anchor_roundtrips():
@@ -797,7 +797,7 @@ def test_cycle_through_frozenset_from_mutable_anchor_roundtrips():
     cfg = Hashable.Config(tag=1)
     cfg.peers = frozenset({cfg})  # cfg -> frozenset({cfg}) -> cfg
     back = _roundtrip(cfg)
-    inner = cast("frozenset[object]", back.peers)
+    inner = cast(frozenset[object], back.peers)
     assert next(iter(inner)) is back
 
 
@@ -867,7 +867,7 @@ def test_mapping_proxy_type_preserved():
     cfg.proxy = MappingProxyType({"a": 1, "b": 2})
     back = _roundtrip(cfg)
     assert type(back.proxy) is MappingProxyType
-    assert dict(cast("MappingProxyType[str, int]", back.proxy)) == {"a": 1, "b": 2}
+    assert dict(cast(MappingProxyType[str, int], back.proxy)) == {"a": 1, "b": 2}
 
 
 def test_plain_enum_roundtrips_via_reduce_fallback():
@@ -908,7 +908,7 @@ def test_local_container_subclass_degrades_to_base():
 
     back = _roundtrip(WithReducibleLeaves.Config(path=LocalList([1, 2])))
     assert back.path == [1, 2]
-    assert type(cast("list[int]", back.path)) is list
+    assert type(cast(list[int], back.path)) is list
 
 
 def test_reduce_leaf_identity_split():
@@ -936,10 +936,10 @@ def test_cycle_through_frozenset_target_terminates_by_value():
     """
     cfg = Hashable.Config(tag=1)
     cfg.peers = frozenset({cfg})
-    back = cast("frozenset[object]", _roundtrip(cfg.peers))
+    back = cast(frozenset[object], _roundtrip(cfg.peers))
     inner = cast(Hashable.Config, next(iter(back)))
     # inner's own back-edge to the (value-copied) frozenset is equal to `back`.
-    assert cast("frozenset[object]", inner.peers) == back
+    assert cast(frozenset[object], inner.peers) == back
     assert inner.tag == 1
 
 
@@ -1005,7 +1005,7 @@ def test_shared_list_keeps_wrapper_for_identity():
     # Same list object in a second field (typed loosely; runtime shares identity).
     object.__setattr__(cfg, "items", shared)
     back = _roundtrip(cfg)
-    assert back.nums is cast("list[int]", back.items)
+    assert back.nums is cast(list[int], back.items)
     assert back.nums == [1, 2]
 
 
@@ -1161,7 +1161,7 @@ def test_local_mapping_subclass_degrades_to_base_dict():
 
     back = _roundtrip(WithReducibleLeaves.Config(path=LocalMap({"a": 1, "b": 2})))
     assert back.path == {"a": 1, "b": 2}
-    assert type(cast("dict[str, int]", back.path)) is dict
+    assert type(cast(dict[str, int], back.path)) is dict
 
 
 def test_deserialize_rejects_unresolvable_import_path():
@@ -1183,7 +1183,7 @@ def test_non_reducible_set_degrades_to_base_set():
     """A set with no usable reduce degrades to a plain ``set`` by contents."""
     back = _roundtrip(WithReducibleLeaves.Config(path=_NonReducibleSet({1, 2, 3})))
     assert back.path == {1, 2, 3}
-    assert type(cast("set[int]", back.path)) is set
+    assert type(cast(set[int], back.path)) is set
 
 
 class _BareStringReduce:

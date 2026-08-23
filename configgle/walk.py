@@ -22,6 +22,7 @@ these walks; this module never imports back up.
 from __future__ import annotations
 
 from collections.abc import (
+    Callable,
     Iterator,
     Mapping,
     Sequence,
@@ -47,9 +48,15 @@ def _get_object_attribute_names(obj: object) -> Iterator[str]:
     seen = set[str]()
     if hasattr(type(obj), "__slots__"):
         for cls in type(obj).__mro__:
-            slots: str | tuple[str, ...] = getattr(cls, "__slots__", ())
-            if isinstance(slots, str):
-                slots = (slots,)
+            # CPython accepts ANY iterable of identifiers for ``__slots__`` --
+            # a list and a set are as legal as a tuple -- so narrowing to
+            # ``str | tuple`` would silently drop every field of such a class.
+            raw_slots = getattr(cls, "__slots__", ())
+            slots = (
+                (raw_slots,)
+                if isinstance(raw_slots, str)
+                else (str(s) for s in raw_slots)
+            )
             for slot in slots:
                 if slot not in seen and slot not in _SKIP_ATTRS:
                     seen.add(slot)
@@ -192,7 +199,7 @@ def copy_tree[ValueT](
     # the only reason to rebuild one is to carry a freshly copied element.
     if isinstance(value, (tuple, frozenset)):
         container = cast("tuple[object, ...] | frozenset[object]", value)
-        return cast("ValueT", _copy_immutable_container(container, visited))
+        return cast(ValueT, _copy_immutable_container(container, visited))
 
     # Mutable containers (list, dict, set): always copy so an in-place mutation
     # never reaches the original.
@@ -218,7 +225,12 @@ def copy_tree[ValueT](
 
         return cast(ValueT, _copy_slots(value, visited))
 
-    return type(value)(copied)  # ty: ignore[unsound-return-statement]  # pyright: ignore[reportCallIssue,reportUnknownArgumentType,reportUnknownVariableType] -- reconstruct the original container type from the copied items; the element type is erased at runtime.
+    # ``value`` is narrowed to a Sequence/Mapping/AbstractSet union here, so
+    # ``type(value)`` statically resolves to ``type[object]`` and the call reads
+    # as ``object.__init__``. Name the real contract: a one-argument iterable
+    # constructor whose element type is erased at runtime.
+    ctor = cast(Callable[[object], ValueT], type(cast(object, value)))
+    return ctor(copied)
 
 
 def _finalize_value[ValueT](value: ValueT) -> ValueT:
@@ -296,7 +308,9 @@ def _finalize_value[ValueT](value: ValueT) -> ValueT:
         return value
 
     # Reconstruct the container with the finalized items.
-    return type(value)(finalized)  # ty: ignore[unsound-return-statement]  # pyright: ignore[reportCallIssue,reportUnknownArgumentType,reportUnknownVariableType] -- reconstruct the original container type from the finalized items; the element type is erased at runtime.
+    # See ``copy_tree``: the narrowed union erases the concrete container type.
+    ctor = cast(Callable[[object], ValueT], type(cast(object, value)))
+    return ctor(finalized)
 
 
 def _make_value[ValueT](
@@ -328,13 +342,13 @@ def _make_value[ValueT](
         return value
 
     if isinstance(value, list):
-        list_value = cast("list[object]", value)
+        list_value = cast(list[object], value)
         materialized_items: list[object] = [
             _make_value(item, made, making) for item in list_value
         ]
         return cast(ValueT, materialized_items)
     if isinstance(value, tuple):
-        tuple_value = cast("tuple[object, ...]", value)
+        tuple_value = cast(tuple[object, ...], value)
         materialized_items = [_make_value(item, made, making) for item in tuple_value]
         if all(
             materialized is original
@@ -356,5 +370,7 @@ def _make_value[ValueT](
             _make_value(key, made, making): _make_value(item, made, making)
             for key, item in cast(Mapping[object, object], value).items()
         }
-        return cast(ValueT, type(value)(materialized))  # pyright: ignore[reportCallIssue,reportUnknownArgumentType] -- reconstruct the original mapping type from mapped entries; its constructor shape is erased at runtime
+        # See ``copy_tree``: the narrowed union erases the concrete mapping type.
+        ctor = cast(Callable[[object], ValueT], type(cast(object, value)))
+        return ctor(materialized)
     return value
