@@ -37,7 +37,7 @@ from configgle import Fig
 
 class Model:
     class Config(Fig):
-        hidden_size: int = 256
+        channels_in: int = 256
         num_layers: int = 4
 
     def __init__(self, config: Config):
@@ -46,7 +46,7 @@ class Model:
 
 # Create and modify config
 cfg = Model.Config()
-cfg.hidden_size = 512
+cfg.channels_in = 512
 
 # Instantiate the parent class
 model = cfg.make()
@@ -64,7 +64,7 @@ def exp000() -> Model.Config:
 
 def exp001() -> Model.Config:
     cfg = exp000()
-    cfg.hidden_size = 512
+    cfg.channels_in = 512
     cfg.num_layers = 8
     return cfg
 ```
@@ -78,15 +78,15 @@ from torch import nn
 
 @autofig
 class Model(nn.Module):
-    def __init__(self, hidden_size: int = 256, num_layers: int = 4):
+    def __init__(self, channels_in: int = 256, num_layers: int = 4):
         super().__init__()
-        self.hidden_size = hidden_size
+        self.channels_in = channels_in
         self.num_layers = num_layers
 
 
 # Config is auto-generated from __init__ signature
-model = Model.Config(hidden_size=512).make()
-print(model.hidden_size)  # 512
+model = Model.Config(channels_in=512).make()
+print(model.channels_in)  # 512
 ```
 
 ## Features
@@ -115,13 +115,13 @@ of `__get__` is `Intersection[type[Config], type[Makeable[Parent]]]`, so
 ```python
 class Model:
     class Config(Fig):
-        hidden_size: int = 256
+        channels_in: int = 256
 
     def __init__(self, config: Config):
-        self.hidden_size = config.hidden_size
+        self.channels_in = config.channels_in
 
 
-model = Model.Config(hidden_size=512).make()  # inferred as Model
+model = Model.Config(channels_in=512).make()  # inferred as Model
 ```
 
 Type checkers that support `Intersection` (like `ty`) resolve this fully --
@@ -132,13 +132,13 @@ name to give the checker the same information explicitly:
 ```python
 class Model:
     class Config(Fig["Model"]):  # explicit type parameter only for basedpyright
-        hidden_size: int = 256
+        channels_in: int = 256
 
     def __init__(self, config: Config):
-        self.hidden_size = config.hidden_size
+        self.channels_in = config.channels_in
 
 
-model: Model = Model.Config(hidden_size=512).make()  # returns Model, not object
+model: Model = Model.Config(channels_in=512).make()  # returns Model, not object
 ```
 
 Without `["Model"]`, non-`ty` checkers fall back to `Any` (so attribute access
@@ -255,8 +255,8 @@ passed to `make()` is left untouched.
 Configs support bulk updates from another config or keyword arguments:
 
 ```python
-cfg = Model.Config(hidden_size=256)
-cfg.update(hidden_size=512, num_layers=8)
+cfg = Model.Config(channels_in=256)
+cfg.update(channels_in=512, num_layers=8)
 
 # Or copy from another config (kwargs take precedence):
 cfg.update(other_cfg, num_layers=12)
@@ -329,7 +329,7 @@ class MLP:
 
 class Model:
     class Config(Fig):
-        hidden_size: int = 256
+        channels_in: int = 256
         num_layers: int = 4
         mlp: Configurable[nn.Module] = field(default_factory=MLP.Config)
         output_mlp: Configurable[nn.Module] = field(default_factory=MLP.Config)
@@ -339,7 +339,7 @@ class Model:
 
 def exp001():
     cfg = Model.Config()
-    cfg.hidden_size = 512
+    cfg.channels_in = 512
     cfg.num_layers = 12
     cfg.mlp.c_in = 512
     cfg.mlp.c_out = 1024
@@ -354,7 +354,7 @@ def exp001():
 
 print(pformat(exp001(), continuation_pipe=0))
 # Model.Config(
-#    hidden_size=512,
+#    channels_in=512,
 #    num_layers=12,
 #    mlp=MLP.Config(
 #    │       c_in=512,
@@ -422,7 +422,7 @@ cast to the field's declared type:
 from configgle import apply_overrides
 
 cfg = Model.Config()
-apply_overrides(cfg, ["hidden_size=512", "mlp.dropout=0.2"])
+apply_overrides(cfg, ["channels_in=512", "mlp.dropout=0.2"])
 ```
 
 `configgle/launch.py` wires that to argparse, so any factory function returning
@@ -463,7 +463,7 @@ sending configs across processes):
 ```python
 import cloudpickle, pickle
 
-cfg = Model.Config(hidden_size=512)
+cfg = Model.Config(channels_in=512)
 cfg_ = pickle.loads(cloudpickle.dumps(cfg))
 model = cfg_.make()  # parent_class is preserved
 ```
@@ -520,7 +520,7 @@ Corrections welcome --
 - **Typed `make()`/`build()` return** -- the type checker knows the built object
   is a `Model`, not `Any`.
 - **Derived fields** -- one field computed from others, e.g. `out_dim` following
-  `hidden_size`. configgle's `finalize()` is a hook you override that cascades
+  `channels_in`. configgle's `finalize()` is a hook you override that cascades
   into child configs.
   - 🟡 Recomputed only at a conversion boundary: Hydra and OmegaConf re-run
     `__post_init__`, Sacred re-executes config scopes, ml_collections has lazy
