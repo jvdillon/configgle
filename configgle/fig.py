@@ -314,14 +314,18 @@ class Maker(Generic[_ParentT_co], metaclass=MakerMeta):
         # before calling finalize, so mutation is isolated. A child finalize may
         # return a different object than it received, so the result is written
         # back onto this config.
-        for name in _get_object_attribute_names(self):
-            try:
-                value = getattr(self, name)
-            except AttributeError:
-                continue
-            finalized_value = _finalize_value(value)
-            if finalized_value is not value:
-                object.__setattr__(self, name, finalized_value)
+        try:
+            for name in _get_object_attribute_names(self):
+                try:
+                    value = getattr(self, name)
+                except AttributeError:
+                    continue
+                finalized_value = _finalize_value(value)
+                if finalized_value is not value:
+                    object.__setattr__(self, name, finalized_value)
+        except Exception:
+            object.__setattr__(self, "_finalized", False)
+            raise
 
         return self
 
@@ -668,8 +672,9 @@ class _DataclassMeta(type):
         weakref_slot: bool | _Default | None = None,
         require_defaults: bool = True,
         make_with_kwargs: bool | None = None,
+        **class_kwargs: object,
     ) -> _DataclassMeta:
-        cls = super().__new__(mcls, name, bases, attrs)
+        cls = super().__new__(mcls, name, bases, attrs, **class_kwargs)
         if classcell := attrs.get("__classcell__"):
             cls.__classcell__ = cast(CellType, classcell)
         if "__slots__" in cls.__dict__:
@@ -892,9 +897,10 @@ def update[MakerT: Maker[Any]](
             if valid_keys is not None and name not in valid_keys:
                 continue
             try:
-                setattr(config, name, getattr(source, name))
+                value = getattr(source, name)
             except AttributeError:
                 continue
+            setattr(config, name, value)
 
     # Apply kwargs.
     for key, value in kwargs.items():

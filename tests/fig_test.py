@@ -378,21 +378,6 @@ def test_make_isolates_nested_children():
     assert getattr(cfg.inner, "_finalized", False) is False
 
 
-def test_dataclass_params_iter_with_str_slots():
-    """Test _DataclassParams.__iter__ with string slots (line 159)."""
-
-    class CustomParams(_DataclassParams):
-        """Custom params with single-slot string for testing."""
-
-        # Note: In real Python, __slots__ should be tuple, but we're testing the branch
-
-    # Create instance and test iteration
-    params = CustomParams()
-    keys = list(params)
-    # Should have standard dataclass params
-    assert len(keys) > 0
-
-
 def test_dataclass_params_iter_skip_seen():
     """Test _DataclassParams.__iter__ skips already seen slots (line 162)."""
     params = _DataclassParams()
@@ -597,6 +582,24 @@ def test_require_defaults_error_message():
             x: int  # No default
 
 
+def test_fig_forwards_mixin_class_keywords() -> None:
+    class ClassKeywordMixin:
+        option = ""
+
+        def __init_subclass__(
+            cls, *, option: str | None = None, **kwargs: object
+        ) -> None:
+            super().__init_subclass__(**kwargs)
+            if option is not None:
+                cls.option = option
+
+    class Config(ClassKeywordMixin, Fig, option="configured"):
+        value: int = 0
+
+    assert Config.option == "configured"
+    assert Config().value == 0
+
+
 def test_finalize_with_nested_dict():
     """Test finalize recursively walks mapping values."""
 
@@ -698,6 +701,20 @@ def test_update_source_with_attribute_error():
     # Should skip y since it raises AttributeError
     cfg.update(source, skip_missing=True)  # pyright: ignore[reportArgumentType]  # ty: ignore[invalid-argument-type] -- malformed source exercises skip_missing
     assert cfg.x == 1
+
+
+def test_update_propagates_target_assignment_error() -> None:
+    @dataclasses.dataclass(slots=True, kw_only=True)
+    class Source:
+        x: int = 1
+
+    class Config(Fig):
+        @property
+        def x(self) -> int:
+            return 0
+
+    with pytest.raises(AttributeError):
+        Config().update(Source())
 
 
 def test_repr_pretty_normal():
@@ -920,6 +937,34 @@ def test_make_twice_leaves_source_unmutated():
     assert first.n == 1
     assert second.n == 1
     assert cfg.n == 0  # source config never mutated
+
+
+def test_failed_child_finalize_leaves_parent_retryable() -> None:
+    class ChildConfig(Fig):
+        fail: bool = True
+
+        @override
+        def finalize(self) -> Self:
+            if self.fail:
+                raise ValueError("child failed")
+            return super().finalize()
+
+    class Parent:
+        class Config(Fig["Parent"]):
+            child: ChildConfig = field(default_factory=ChildConfig)
+
+        def __init__(self, config: Config) -> None:
+            self.child = config.child
+
+    config = Parent.Config()
+    with pytest.raises(ValueError, match="child failed"):
+        config.finalize()
+    assert not config._finalized
+    config.child.fail = False
+
+    made = config.make()
+
+    assert made.child._finalized
 
 
 def test_pformat_after_finalize_does_not_re_finalize():
