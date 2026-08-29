@@ -764,7 +764,7 @@ def test_dataclass_params_iter_with_string_slots():
         __slots__ = "extra"  # pyright: ignore[reportAssignmentType]  # noqa: PLC0205  # intentionally string for branch test
 
     params = StringSlotParams()
-    params.extra = True  # ty: ignore[unresolved-attribute]
+    params.extra = True
     keys = list(params)
     assert "extra" in keys
 
