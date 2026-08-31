@@ -20,13 +20,13 @@ The copy that keeps a source config pristine happens ONCE, at the boundary:
 you hand to ``make()`` is never mutated, while ``finalize`` itself stays a pure
 in-place hook.
 
-The free functions ``make``/``copy_tree``/``update`` and the matching
-``Maker`` methods are equivalent; ``finalize`` is the one overridable hook and
-is method-only.
+The free functions ``make``/``update`` and the matching ``Maker`` methods are
+equivalent. Tree copying is exposed as ``Maker.copy_tree``; its shared traversal
+implementation lives in ``configgle.walk``. ``finalize`` is method-only.
 
 Key operations
 --------------
-- ``copy_tree(cfg)`` -- a "semi-deep" copy: every nested config and every
+- ``cfg.copy_tree()`` -- a "semi-deep" copy: every nested config and every
   mutable container holding configs is duplicated, while leaf values
   (primitives, tensors, loggers) are aliased. Immutable containers
   (tuple/frozenset) are preserved unless an element changed. This is the copy
@@ -58,9 +58,7 @@ from a child AFTER it (read its finalized value). Pushdown dominates, so
 
 from __future__ import annotations
 
-from collections.abc import (
-    Iterator,
-)
+from collections.abc import Iterator
 from types import CellType, MethodType
 from typing import (
     IO,
@@ -83,6 +81,13 @@ if TYPE_CHECKING:
     from ty_extensions import Intersection
 
 
+from configgle.custom_json import (
+    DecodeCapabilities,
+    GraphHooks,
+    decode_graph,
+    encode_graph,
+    resolve_import,
+)
 from configgle.custom_types import (
     DataclassLike,
     Makeable,
@@ -92,11 +97,6 @@ from configgle.pprinting import (
     _SHORT_SEQUENCE_MAX_WIDTH,
     pformat,
     pprint,
-)
-from configgle.serialize import (
-    Hooks,
-    deserialize,
-    serialize,
 )
 from configgle.walk import (
     _copy_slots,
@@ -310,10 +310,17 @@ class Maker(Generic[_ParentT_co], metaclass=MakerMeta):
         # ``object.__setattr__`` bypasses frozen dataclass restrictions.
         object.__setattr__(self, "_finalized", True)
 
-        # Cascade into nested Finalizeable attrs. The caller copied the tree
-        # before calling finalize, so mutation is isolated. A child finalize may
-        # return a different object than it received, so the result is written
-        # back onto this config.
+        # Cascade into nested Finalizeable attrs. A child finalize may return a
+        # different object than it received, so the result is written back onto
+        # this config.
+        #
+        # Partial mutation is NOT undone, and does not need to be: the isolation
+        # is the CALLER'S COPY. ``make`` and ``pprint`` finalize ``copy_tree()``
+        # output, so a raise here abandons a throwaway tree while the caller's
+        # config stays untouched. Only ``_finalized`` is restored, because that
+        # flag outlives the failure: it is copied onto the next tree, where a
+        # stale ``True`` would make ``make`` skip finalization altogether and
+        # silently build from underived defaults.
         try:
             for name in _get_object_attribute_names(self):
                 try:
@@ -355,7 +362,7 @@ class Maker(Generic[_ParentT_co], metaclass=MakerMeta):
         """
         return update(self, source, skip_missing=skip_missing, **kwargs)
 
-    def serialize(self, *, hooks: Hooks | None = None) -> Any:
+    def serialize(self, *, hooks: GraphHooks | None = None) -> object:
         """Serialize this config tree to an encodable dict tree.
 
         Returns a JSON-encodable structure (nested dicts/lists/primitives), not
@@ -379,10 +386,10 @@ class Maker(Generic[_ParentT_co], metaclass=MakerMeta):
           tree: An encodable tree that ``deserialize`` reverses into live objects.
 
         """
-        return serialize(self, hooks=hooks)
+        return encode_graph(self, hooks=hooks)
 
     @classmethod
-    def deserialize(cls, tree: object, *, hooks: Hooks | None = None) -> Self:
+    def deserialize(cls, tree: object, *, hooks: GraphHooks | None = None) -> Self:
         """Reconstruct a config from a tree produced by ``serialize``.
 
         Resolves config classes and callables by their recorded import path, so
@@ -404,7 +411,17 @@ class Maker(Generic[_ParentT_co], metaclass=MakerMeta):
           config: The reconstructed config tree.
 
         """
-        return cast(Self, deserialize(tree, hooks=hooks))
+        return cast(
+            Self,
+            decode_graph(
+                tree,
+                hooks=hooks,
+                capabilities=DecodeCapabilities(
+                    resolve=resolve_import,
+                    apply_reduce=True,
+                ),
+            ),
+        )
 
     def pformat(
         self,
@@ -435,7 +452,8 @@ class Maker(Generic[_ParentT_co], metaclass=MakerMeta):
           mask_memory_addresses: Replace memory addresses with placeholder.
           extra_compact: Use extra compact formatting.
           continuation_pipe: Lines threshold for continuation pipes (0=always, -1=never).
-          hide_default_values: Omit fields with default values.
+          hide_default_values: Omit fields matching literal defaults. Factory-backed
+            fields remain visible without executing their factories.
           short_sequence_max_width: Max width for single-line sequences.
 
         Returns:
@@ -489,7 +507,8 @@ class Maker(Generic[_ParentT_co], metaclass=MakerMeta):
           mask_memory_addresses: Replace memory addresses with placeholder.
           extra_compact: Use extra compact formatting.
           continuation_pipe: Lines threshold for continuation pipes (0=always, -1=never).
-          hide_default_values: Omit fields with default values.
+          hide_default_values: Omit fields matching literal defaults. Factory-backed
+            fields remain visible without executing their factories.
           short_sequence_max_width: Max width for single-line sequences.
 
         """

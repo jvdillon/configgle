@@ -16,12 +16,26 @@ import pickle
 
 import pytest
 
+from configgle.custom_json import (
+    DecodeCapabilities,
+    GraphHooks,
+    decode_graph,
+    encode_graph,
+    resolve_import,
+)
 from configgle.fig import Dataclass, Fig
 from configgle.inline import InlineConfig, PartialConfig
-from configgle.serialize import Hooks, deserialize, serialize
 
 
-# Module-level config classes: deserialize resolves by import path, so the target
+def _decode_graph(tree: object, *, hooks: GraphHooks | None = None) -> object:
+    return decode_graph(
+        tree,
+        hooks=hooks,
+        capabilities=DecodeCapabilities(resolve=resolve_import, apply_reduce=True),
+    )
+
+
+# Module-level config classes: decode resolves by import path, so the target
 # must be importable (a class nested in a test function cannot be).
 class Leaf:
     class Config(Fig["Leaf"]):
@@ -118,7 +132,11 @@ class HasWeight:
         del config
 
 
-_WEIGHT_HOOKS: Hooks = {Weight: (lambda w: w.data, Weight)}
+def _encode_weight(weight: Weight) -> list[float]:
+    return weight.data
+
+
+_WEIGHT_HOOKS: GraphHooks = {Weight: (_encode_weight, Weight)}
 
 
 class _StatefulLeaf:
@@ -312,9 +330,9 @@ class ImmutableDag:
 
 
 def _roundtrip[T](cfg: T) -> T:
-    # Round-trip through json.dumps/loads too, proving serialize() yields a
+    # Round-trip through json.dumps/loads too, proving encode_graph() yields a
     # genuinely JSON-encodable tree (not just an in-memory structure).
-    return cast(T, deserialize(json.loads(json.dumps(serialize(cfg)))))
+    return cast(T, _decode_graph(json.loads(json.dumps(encode_graph(cfg)))))
 
 
 def test_scalar_fields_roundtrip():
@@ -344,14 +362,18 @@ def test_roundtrip_result_is_makeable():
     assert obj.v == 3
 
 
-def test_no_finalize_on_serialize():
+def test_no_finalize_on_encode_graph():
     """Serialization captures the raw (unfinalized) config, not a derived one."""
     cfg = Derived.Config(base=5)
-    tree = serialize(cfg)
+    tree = encode_graph(cfg)
+    assert isinstance(tree, dict)
+    source = cast(dict[str, object], tree)
     # doubled stays at its sentinel -- finalize did not run. jsonpickle py/object
     # inlines fields flat alongside the py/object type key.
-    assert tree["doubled"] == -1
-    assert tree["py/object"].endswith("Derived.Config")
+    assert source["doubled"] == -1
+    path = source["py/object"]
+    assert isinstance(path, str)
+    assert path.endswith("Derived.Config")
 
 
 def test_list_and_dict_of_figs_roundtrip():
@@ -481,13 +503,16 @@ def test_callable_instance_falls_back_to_reduce():
     builtin, class) has. An instance that merely defines ``__call__`` has no own
     ``__qualname__``, so it must take the documented ``__reduce__`` fallback.
     """
-    back = deserialize(serialize(functools.partial(operator.add, 1)))
+    back = cast(
+        Callable[[int], int],
+        _decode_graph(encode_graph(functools.partial(operator.add, 1))),
+    )
     assert back(5) == 6
 
 
 def test_callable_module_roundtrips_by_reduce():
     """A callable object with state (an ``nn.Module``-shaped leaf) keeps its state."""
-    back = deserialize(serialize(Accumulator(3)))
+    back = _decode_graph(encode_graph(Accumulator(3)))
     assert isinstance(back, Accumulator)
     assert back(4) == 7
 
@@ -499,21 +524,26 @@ def test_bound_method_roundtrips_by_reduce():
     the UNBOUND function, so recording it would silently drop the receiver. It
     pickles as ``getattr(obj, name)``; the reduce fallback must own it.
     """
-    back = deserialize(serialize("-".join))
+    back = cast(Callable[[list[str]], str], _decode_graph(encode_graph("-".join)))
     assert back(["a", "b"]) == "a-b"
 
 
 def test_classmethod_roundtrips_by_reduce():
     """A bound classmethod is the same shape: bound to the class, not a module."""
-    back = deserialize(serialize(dict.fromkeys))
+    back = cast(
+        Callable[[list[str]], dict[str, object]],
+        _decode_graph(encode_graph(dict.fromkeys)),
+    )
     assert back(["a"]) == {"a": None}
 
 
 def test_callable_config_encodes_as_object():
     """A Fig that defines ``__call__`` is still a config, not a function reference."""
-    tree = serialize(CallableLeaf.Config(v=5))
-    assert "py/object" in tree
-    back = deserialize(tree)
+    tree = encode_graph(CallableLeaf.Config(v=5))
+    assert isinstance(tree, dict)
+    source = cast(dict[str, object], tree)
+    assert "py/object" in source
+    back = _decode_graph(source)
     assert isinstance(back, CallableLeaf.Config)
     assert back.v == 5
 
@@ -526,7 +556,7 @@ def test_bare_string_reduce_rejects_unresolvable_global():
     path cannot produce a tree that only fails at decode.
     """
     with pytest.raises(TypeError, match=r"does not resolve|no importable path"):
-        serialize(ReducesToMissingGlobal())
+        encode_graph(ReducesToMissingGlobal())
 
 
 @pytest.mark.parametrize("ref", [-1, True, 1.0, "1", None])
@@ -539,7 +569,7 @@ def test_deserialize_rejects_non_index_ref(ref: object):
     otherwise index 1.
     """
     with pytest.raises(ValueError, match="py/id"):
-        deserialize([{"a": 1}, {"py/id": ref}])
+        _decode_graph([{"a": 1}, {"py/id": ref}])
 
 
 class AngryAttrs:
@@ -559,7 +589,7 @@ def test_callable_with_hostile_getattr_still_serializes():
     anything else escapes it; the Protocol check answers the same question
     without propagating.
     """
-    back = deserialize(serialize(AngryAttrs()))
+    back = _decode_graph(encode_graph(AngryAttrs()))
     assert isinstance(back, AngryAttrs)
 
 
@@ -568,7 +598,8 @@ def test_class_and_function_reference_roundtrip():
 
     Both are references resolved by import path -- decode returns the same object.
     """
-    tree = serialize({"fn": _plain_fn, "cls": dict})
+    tree = encode_graph({"fn": _plain_fn, "cls": dict})
+    assert isinstance(tree, dict)
     assert tree["cls"] == {"py/type": "builtins.dict"}
     assert tree["fn"] == {"py/function": f"{__name__}._plain_fn"}
     back = _roundtrip({"fn": _plain_fn, "cls": dict})
@@ -588,8 +619,8 @@ def test_stale_function_import_path_is_rejected(
     )
     assert _stale_redefined_fn is not _live_redefined_fn
     with pytest.raises(TypeError, match="does not resolve to the same object"):
-        serialize(_stale_redefined_fn)
-    assert serialize(_live_redefined_fn) == {
+        encode_graph(_stale_redefined_fn)
+    assert encode_graph(_live_redefined_fn) == {
         "py/function": f"{__name__}._live_redefined_fn",
     }
 
@@ -619,8 +650,9 @@ def test_inline_config_with_nested_fig_roundtrip():
 def test_hook_encodes_opaque_leaf():
     """A per-type hook serializes a leaf that JSON cannot represent natively."""
     cfg = HasWeight.Config(weight=Weight([1.0, 2.0]))
-    tree = serialize(cfg, hooks=_WEIGHT_HOOKS)
-    back = deserialize(json.loads(json.dumps(tree)), hooks=_WEIGHT_HOOKS)
+    tree = encode_graph(cfg, hooks=_WEIGHT_HOOKS)
+    back = _decode_graph(json.loads(json.dumps(tree)), hooks=_WEIGHT_HOOKS)
+    assert isinstance(back, HasWeight.Config)
     assert isinstance(back.weight, Weight)
     assert back.weight.data == [1.0, 2.0]
 
@@ -639,7 +671,7 @@ def test_unserializable_leaf_raises_without_hook():
             del config
 
     with pytest.raises(TypeError, match="Opaque"):
-        serialize(HasOpaque.Config())
+        encode_graph(HasOpaque.Config())
 
 
 def test_method_serialization_roundtrips():
@@ -653,7 +685,7 @@ def test_method_serialization_roundtrips():
 
 def test_serialize_yields_json_encodable_tree():
     """Serialize returns a dict tree that json.dumps accepts unchanged."""
-    tree = serialize(Leaf.Config(v=1))
+    tree = encode_graph(Leaf.Config(v=1))
     assert isinstance(tree, dict)
     # json.dumps must not raise -- the tree is genuinely JSON-encodable.
     assert isinstance(json.dumps(tree), str)
@@ -661,8 +693,8 @@ def test_serialize_yields_json_encodable_tree():
 
 def test_deserialize_passes_through_non_config_top_level():
     """Deserialize of a bare scalar returns it (primitives pass through)."""
-    assert deserialize(5) == 5
-    assert deserialize("hi") == "hi"
+    assert _decode_graph(5) == 5
+    assert _decode_graph("hi") == "hi"
 
 
 def test_serialize_and_pickle_roundtrips_agree():
@@ -676,7 +708,8 @@ def test_serialize_and_pickle_roundtrips_agree():
     cfg = Holder.Config(animal=Dog.Config(breed="corgi"))
 
     via_pickle = pickle.loads(pickle.dumps(cfg))
-    via_serialize = deserialize(serialize(cfg))
+    via_serialize = _decode_graph(encode_graph(cfg))
+    assert isinstance(via_serialize, Holder.Config)
 
     # Both equal the original and each other.
     assert via_pickle == cfg
@@ -695,11 +728,15 @@ def test_picklable_leaf_roundtrips_without_a_hook():
     """
     cfg = HasWeight.Config(weight=Weight([1.0, 2.0]))
     via_pickle = pickle.loads(pickle.dumps(cfg))
-    via_serialize = deserialize(serialize(cfg))
+    via_serialize = _decode_graph(encode_graph(cfg))
+    assert isinstance(via_serialize, HasWeight.Config)
     assert via_serialize.weight.data == via_pickle.weight.data == [1.0, 2.0]
 
     # A hook still overrides the default reduce encoding when supplied.
-    via_hook = deserialize(serialize(cfg, hooks=_WEIGHT_HOOKS), hooks=_WEIGHT_HOOKS)
+    via_hook = _decode_graph(
+        encode_graph(cfg, hooks=_WEIGHT_HOOKS), hooks=_WEIGHT_HOOKS
+    )
+    assert isinstance(via_hook, HasWeight.Config)
     assert via_hook.weight.data == [1.0, 2.0]
 
 
@@ -881,7 +918,7 @@ def test_plain_enum_roundtrips_via_reduce_fallback():
     assert back.e is PlainEnum.A
 
 
-def test_local_config_class_rejected_at_serialize():
+def test_local_config_class_rejected_at_encode_graph():
     """NEW-3: a local (non-importable) config class fails loudly on serialize."""
 
     class Local:
@@ -892,7 +929,7 @@ def test_local_config_class_rejected_at_serialize():
             del config
 
     with pytest.raises(TypeError, match="importable"):
-        serialize(Local.Config())
+        encode_graph(Local.Config())
 
 
 def test_local_container_subclass_degrades_to_base():
@@ -993,8 +1030,8 @@ def test_failed_reduce_rolls_back_child_registrations():
 
 def test_unshared_list_serializes_as_native_array():
     """TAK-001: a plain unshared list is native JSON, not a wrapped node."""
-    assert serialize([1, 2, 3]) == [1, 2, 3]
-    assert serialize({"a": [1, 2]}) == {"a": [1, 2]}
+    assert encode_graph([1, 2, 3]) == [1, 2, 3]
+    assert encode_graph({"a": [1, 2]}) == {"a": [1, 2]}
 
 
 def test_shared_list_keeps_wrapper_for_identity():
@@ -1014,7 +1051,8 @@ def test_hooked_leaf_dag_identity_preserved():
     shared = Weight([1.0])
     cfg = TwoWeights.Config(a=shared, b=shared)
     assert cfg.a is cfg.b
-    back = deserialize(serialize(cfg, hooks=_WEIGHT_HOOKS), hooks=_WEIGHT_HOOKS)
+    back = _decode_graph(encode_graph(cfg, hooks=_WEIGHT_HOOKS), hooks=_WEIGHT_HOOKS)
+    assert isinstance(back, TwoWeights.Config)
     assert back.a is back.b
 
 
@@ -1035,12 +1073,12 @@ def test_local_callable_rejected_at_serialize_boundary():
     identity: Callable[[object], object] = lambda x: x  # noqa: E731  -- local lambda is the test subject (unimportable callable)
     cfg: InlineConfig[object] = InlineConfig(identity, 1)
     with pytest.raises((TypeError, ValueError), match=r"import path|module-level"):
-        serialize(cfg)
+        encode_graph(cfg)
 
 
 def test_deserialize_passes_through_plain_dict():
     """A tagless dict (no ``py/*`` key) is literal data, returned as-is -- not an error."""
-    assert deserialize({"no_tag": 1, "nested": {"x": 2}}) == {
+    assert _decode_graph({"no_tag": 1, "nested": {"x": 2}}) == {
         "no_tag": 1,
         "nested": {"x": 2},
     }
@@ -1066,7 +1104,7 @@ def test_deserialize_rejects_dangling_ref_with_exception():
     raise a real exception unconditionally.
     """
     with pytest.raises((KeyError, IndexError, ValueError)):
-        deserialize({"py/id": 999})
+        _decode_graph({"py/id": 999})
 
 
 def test_unserializable_leaf_error_names_current_api():
@@ -1074,7 +1112,7 @@ def test_unserializable_leaf_error_names_current_api():
     cfg = HasUnpicklable.Config()
     cfg.x = Unpicklable()
     with pytest.raises(TypeError) as excinfo:
-        serialize(cfg)
+        encode_graph(cfg)
     assert "hooks" in str(excinfo.value)
 
 
@@ -1094,10 +1132,11 @@ def test_ordered_dict_subclass_type_preserved():
 
 def test_non_finite_float_is_valid_strict_json():
     """CFG-9: serialize yields strict JSON -- json.dumps(allow_nan=False) must not raise."""
-    tree = serialize(WithFloat.Config(x=float("inf")))
+    tree = encode_graph(WithFloat.Config(x=float("inf")))
     # allow_nan=False rejects Infinity/NaN; the tree must survive it.
     dumped = json.dumps(tree, allow_nan=False)
-    back = deserialize(json.loads(dumped))
+    back = _decode_graph(json.loads(dumped))
+    assert isinstance(back, WithFloat.Config)
     assert back.x == float("inf")
 
 
@@ -1167,7 +1206,7 @@ def test_local_mapping_subclass_degrades_to_base_dict():
 def test_deserialize_rejects_unresolvable_import_path():
     """A ``py/type`` naming a nonexistent module raises ``ImportError`` on decode."""
     with pytest.raises(ImportError, match="Cannot resolve path"):
-        deserialize({"py/type": "no_such_module_xyz.Thing"})
+        _decode_graph({"py/type": "no_such_module_xyz.Thing"})
 
 
 class _NonReducibleSet(frozenset[int]):

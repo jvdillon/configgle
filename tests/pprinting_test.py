@@ -2,21 +2,33 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from io import StringIO
-from typing import Self, override
+from pathlib import Path
+from typing import Self, cast, override
 
+import ast
 import copy
 import dataclasses
+import functools
+import glob
+import inspect
+import re
+import types
 import warnings
 
-from configgle import Fig
+import pytest
+
+from configgle import Fig, PartialConfig, pprinting
 from configgle.pprinting import (
-    _MASK_MEMORY_ADDRESSES_FN,
+    _MASKED_MEMORY_ADDRESS,
     FigPrinter,
     _add_pipes_to_lines,
     _collapse_multiline_value,
     _filter_non_default_items,
     _get_level_indents,
+    _mask_memory_addresses,
+    _qualify_function_reprs,
     _replace_char_at_column,
     _should_add_continuation_pipes,
     pformat,
@@ -53,11 +65,12 @@ def test_pformat_with_options():
 
     # Test with underscore_numbers
     result = pformat(obj, underscore_numbers=True)
-    assert "1_000_000" in result or "1000000" in result
+    assert "1_000_000" in result
 
     # Test without underscore_numbers
     result = pformat(obj, underscore_numbers=False)
-    assert result is not None
+    assert "1000000" in result
+    assert "1_000_000" not in result
 
 
 def test_pformat_mask_memory_addresses():
@@ -68,7 +81,102 @@ def test_pformat_mask_memory_addresses():
 
     obj = Obj()
     result = pformat(obj, mask_memory_addresses=True)
-    assert "0x0defaced" in result or repr(obj) in result
+    assert _MASKED_MEMORY_ADDRESS in result
+    assert repr(obj) not in result
+
+
+def _identity_function(
+    function: Callable[[str], str],
+) -> Callable[[str], str]:
+    return function
+
+
+def _partial_function(function: Callable[[str], str]) -> PartialConfig[str]:
+    return PartialConfig(function)
+
+
+@pytest.mark.parametrize("wrap", [_identity_function, _partial_function])
+@pytest.mark.parametrize("mask_memory_addresses", [False, True])
+def test_function_repr_preserves_callable_identity(
+    wrap: Callable[[Callable[[str], str]], object],
+    mask_memory_addresses: bool,
+) -> None:
+    re_escape = pformat(
+        wrap(re.escape),
+        mask_memory_addresses=mask_memory_addresses,
+    )
+    glob_escape = pformat(
+        wrap(glob.escape),
+        mask_memory_addresses=mask_memory_addresses,
+    )
+
+    assert re_escape != glob_escape
+    assert "re.escape" in re_escape
+    assert "glob.escape" in glob_escape
+
+
+def test_function_repr_preserves_callable_identity_in_sets() -> None:
+    rendered = pformat({re.escape, glob.escape})
+
+    assert "re.escape" in rendered
+    assert "glob.escape" in rendered
+
+
+def test_function_qualification_binds_modules_to_exact_addresses() -> None:
+    first = types.FunctionType((lambda: None).__code__, {"__name__": "first_module"})
+    second = types.FunctionType((lambda: None).__code__, {"__name__": "second_module"})
+    first.__qualname__ = second.__qualname__ = "shared"
+    rendered = f"[{second!r}, {first!r}]"
+
+    qualified = _qualify_function_reprs([first, second], rendered)
+
+    assert qualified == (
+        f"[<function second_module.shared at {hex(id(second))}>, "
+        f"<function first_module.shared at {hex(id(first))}>]"
+    )
+
+
+def test_function_qualification_ignores_repr_inside_string_value() -> None:
+    function = types.FunctionType(
+        (lambda: None).__code__,
+        {"__name__": "string_collision_module"},
+    )
+    function.__qualname__ = "shared"
+    rendered = repr([repr(function), function])
+
+    qualified = _qualify_function_reprs([repr(function), function], rendered)
+
+    assert qualified == (
+        f"[{repr(function)!r}, "
+        f"<function string_collision_module.shared at {hex(id(function))}>]"
+    )
+
+
+def test_function_qualification_handles_aliased_containers() -> None:
+    function = types.FunctionType(
+        (lambda: None).__code__,
+        {"__name__": "aliased_module"},
+    )
+    function.__qualname__ = "shared"
+    child = [function]
+    rendered = repr([child, child])
+
+    qualified = _qualify_function_reprs([child, child], rendered)
+
+    expected = f"<function aliased_module.shared at {hex(id(function))}>"
+    assert qualified == f"[[{expected}], [{expected}]]"
+
+
+def test_owned_files_have_no_long_nested_functions() -> None:
+    # Located through the imported module, not as a sibling file: the export
+    # moves tests to ``tests/`` and sources into the package, so the two stop
+    # sharing a directory.
+    paths = [Path(__file__), Path(inspect.getfile(pprinting))]
+
+    assert {path.name: _long_nested_functions(path) for path in paths} == {
+        "pprinting.py": [],
+        "pprinting_test.py": [],
+    }
 
 
 def test_pformat_finalize():
@@ -114,7 +222,7 @@ def test_pprint_with_options():
         finalize=False,
     )
     output = stream.getvalue()
-    assert output is not None
+    assert "1_000_000" in output
 
 
 def test_pretty_printer_init():
@@ -149,17 +257,20 @@ def test_pretty_printer_pformat():
     assert "'a': 1" in result
 
 
-def test_pretty_printer_format_with_unfinalized_warning():
-    """Test FigPrinter.format warns about unfinalized configs."""
+def test_pretty_printer_format_finalizes_nested_configs_without_warning() -> None:
+    """Test FigPrinter.format finalizes configs reached below the root."""
+    finalizations = 0
 
     class UnfinalizedConfig:
-        def __init__(self):
+        def __init__(self) -> None:
             self._finalized = False
 
-        def make(self):
+        def make(self) -> Self:
             return self
 
         def finalize(self) -> Self:
+            nonlocal finalizations
+            finalizations += 1
             new = copy.copy(self)
             new._finalized = True
             return new
@@ -167,12 +278,82 @@ def test_pretty_printer_format_with_unfinalized_warning():
     pp = FigPrinter(finalize=True)
     cfg = UnfinalizedConfig()
 
-    with warnings.catch_warnings(record=True) as w:
+    with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         pp.format(cfg, {}, 0, 0)
-        # Should warn about unfinalized dataclass
-        assert len(w) >= 1
-        assert "unfinalized" in str(w[0].message).lower()
+
+    assert not caught
+    assert finalizations == 1
+
+
+def test_nested_config_finalization_is_independent_of_render_width() -> None:
+    class DerivedConfig(Fig):
+        value: int = -1
+
+        @override
+        def finalize(self) -> Self:
+            if self.value == -1:
+                self.value = 7
+            return super().finalize()
+
+    wide = pformat({"cfg": DerivedConfig()}, width=200, hide_default_values=False)
+    narrow = pformat({"cfg": DerivedConfig()}, width=20, hide_default_values=False)
+
+    assert "value=7" in wide
+    assert "value=7" in narrow
+    assert "value=-1" not in narrow
+
+
+def test_multiline_speculative_format_finalizes_nested_config_once() -> None:
+    finalizations = 0
+
+    class Config(Fig):
+        value: int = 0
+
+        @override
+        def finalize(self) -> Self:
+            nonlocal finalizations
+            finalizations += 1
+            return super().finalize()
+
+    pformat(
+        [Config()],
+        width=10,
+        hide_default_values=False,
+        short_sequence_max_width=5,
+    )
+
+    assert finalizations == 1
+
+
+def test_finalized_copy_cache_survives_address_reuse() -> None:
+    """A reclaimed config's address must not serve another config's copy.
+
+    The cache is keyed by ``id()``, which CPython reuses as soon as the original
+    is collected. Without holding the key object, a config allocated at that
+    address during the same render silently receives the previous config's
+    finalized copy.
+    """
+
+    class Config(Fig):
+        n: int = 0
+
+        @override
+        def finalize(self) -> Self:
+            self.n += 1
+            return super().finalize()
+
+    printer = FigPrinter()
+    printer._finalized_copies = {}
+    first = Config()
+    first_copy = printer._try_to_finalize(first)
+    # Reuse is a race against the allocator, so the collision is staged rather
+    # than raced: a live config whose address the cache already maps must still
+    # finalize as itself.
+    second = Config()
+    printer._finalized_copies[id(second)] = (first, first_copy)
+
+    assert printer._try_to_finalize(second) is not first_copy
 
 
 def test_pretty_printer_format_with_memory_masking():
@@ -184,14 +365,39 @@ def test_pretty_printer_format_with_memory_masking():
     pp = FigPrinter(mask_memory_addresses=True)
     obj = Obj()
     result, _, _ = pp.format(obj, {}, 0, 0)
-    assert "0x0defaced" in result
+    assert _MASKED_MEMORY_ADDRESS in result
 
 
-def test_mask_memory_addresses_function():
+@pytest.mark.parametrize("address", ["0x7f8b9c0a", "0x7f8b9c0a1b20"])
+def test_mask_memory_addresses_function(address: str) -> None:
     """Test the memory address masking function."""
-    text = "Object at 0x7f8b9c0a1b20"
-    result = _MASK_MEMORY_ADDRESSES_FN(text)
-    assert "0defaced" in result
+    result = _mask_memory_addresses(f"Object at {address}; configured=0xdeadbeef")
+    assert address not in result
+    assert _MASKED_MEMORY_ADDRESS in result
+    assert "configured=0xdeadbeef" in result
+
+
+@pytest.mark.parametrize("address", ["0x7f8b9c0a", "0x7f8b9c0a1b20", "0xabc"])
+def test_masked_address_is_one_platform_independent_literal(address: str) -> None:
+    """Every masked address renders as the same literal everywhere.
+
+    Goldens are shared across machines, so the placeholder cannot depend on the
+    recording host: sizing it from the local pointer width makes a 64-bit
+    golden unreproducible on a 32-bit interpreter, and sizing it per match
+    leaks the original address's length into the output.
+    """
+    masked = _mask_memory_addresses(f"<Obj at {address}>")
+
+    assert masked == f"<Obj at {_MASKED_MEMORY_ADDRESS}>"
+    assert _MASKED_MEMORY_ADDRESS == "0xdefacedeface"
+
+
+def test_memory_address_masking_preserves_quoted_string_data() -> None:
+    address_data = "object at 0x7f8b9c0a"
+
+    rendered = pformat({"message": address_data}, mask_memory_addresses=True)
+
+    assert address_data in rendered
 
 
 def test_pretty_printer_try_to_finalize():
@@ -204,7 +410,8 @@ def test_pretty_printer_try_to_finalize():
     cfg = FinalizableConfig()
 
     finalized = pp._try_to_finalize(cfg)
-    assert finalized is not cfg or cfg.value == 42
+    assert finalized is not cfg
+    assert finalized.value == 42
 
 
 def test_pretty_printer_try_to_finalize_with_error():
@@ -250,14 +457,14 @@ def test_pretty_printer_no_finalize():
 # ---------------------------------------------------------------------------
 
 
-@dataclasses.dataclass  # check-dataclass: ignore[kw_only,slots]
+@dataclasses.dataclass(kw_only=True, slots=True)
 class _SimpleData:
     x: int = 1
     y: str = "hello"
     description: str = "a somewhat long default description value"
 
 
-@dataclasses.dataclass  # check-dataclass: ignore[kw_only,slots]
+@dataclasses.dataclass(kw_only=True, slots=True)
 class _NestedData:
     inner: _SimpleData = dataclasses.field(default_factory=_SimpleData)
     values: list[int] = dataclasses.field(default_factory=lambda: [1, 2, 3])
@@ -401,15 +608,84 @@ class TestCollapseMultiline:
         result = _collapse_multiline_value("(\n  1,\n  2\n)", 40)
         assert "\n" not in result
 
+    def test_collapse_preserves_adjacent_token_boundary(self) -> None:
+        assert _collapse_multiline_value("foo\nbar", 40) == "foo bar"
+
+    def test_collapse_removes_formatting_boundary_whitespace(self) -> None:
+        assert _collapse_multiline_value("\n  1,\n  2\n", 40) == "1, 2"
+
     def test_long_multiline_stays(self):
         """Long multiline values stay multiline."""
         long_val = "(\n" + "  very_long_name=very_long_value,\n" * 5 + ")"
         result = _collapse_multiline_value(long_val, 10)
         assert "\n" in result
 
+    def test_collapse_preserves_string_literal_whitespace(self) -> None:
+        multiline = "['a  ',\n'b']"
+
+        collapsed = _collapse_multiline_value(multiline, 40)
+
+        assert ast.literal_eval(collapsed) == ast.literal_eval(multiline)
+
+
+class _AmbiguousComparison:
+    def __bool__(self) -> bool:
+        raise ValueError("ambiguous comparison")
+
+
+class _AmbiguousValue:
+    __hash__ = object.__hash__
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        del other
+        return cast(bool, _AmbiguousComparison())
+
+
+@dataclasses.dataclass(kw_only=True, slots=True)
+class _MixedDefaults:
+    ordinary: int = 1
+    ambiguous: _AmbiguousValue = dataclasses.field(default_factory=_AmbiguousValue)
+
+
+def test_one_ambiguous_default_does_not_unhide_unrelated_defaults() -> None:
+    result = pformat(
+        _MixedDefaults(),
+        hide_default_values=True,
+        width=20,
+    )
+
+    assert "ordinary=" not in result
+
 
 class TestFilterNonDefaultItems:
     """Test _filter_non_default_items."""
+
+    def test_filtering_does_not_execute_construction_side_effects(self) -> None:
+        constructions = 0
+        factory_calls = [0]
+
+        @dataclasses.dataclass(kw_only=True, slots=True)
+        class SideEffectData:
+            value: int = 1
+            items: list[int] = dataclasses.field(
+                default_factory=functools.partial(_default_items, factory_calls),
+            )
+
+            def __post_init__(self) -> None:
+                nonlocal constructions
+                constructions += 1
+
+        obj = SideEffectData()
+        assert (constructions, factory_calls) == (1, [1])
+
+        filtered = _filter_non_default_items(
+            obj,
+            [("value", 1), ("items", obj.items)],
+        )
+
+        assert filtered == [("items", [])]
+        assert (constructions, factory_calls) == (1, [1])
 
     def test_filters_defaults(self):
         """Default values should be filtered out."""
@@ -426,17 +702,17 @@ class TestFilterNonDefaultItems:
         assert ("x", 99) in result
         assert ("y", "world") in result
 
-    def test_handles_no_default_constructor(self):
-        """Classes that can't be default-constructed return all items."""
+    def test_keeps_fields_without_declared_defaults(self):
+        """Fields without declared defaults remain visible."""
 
-        @dataclasses.dataclass  # check-dataclass: ignore[kw_only,slots]
+        @dataclasses.dataclass(kw_only=True, slots=True)
         class RequiredFields:
-            x: int  # No default
+            x: int
 
         obj = RequiredFields(x=42)
         items: list[tuple[str, object]] = [("x", 42)]
         result = _filter_non_default_items(obj, items)
-        assert result == items  # Returns all since default construction fails
+        assert result == items
 
 
 class TestUtilityFunctions:
@@ -465,7 +741,7 @@ class TestPprintListDispatch:
     def test_long_list_triggers_pprint_list(self):
         """A long list inside a dataclass should trigger _pprint_list dispatch."""
 
-        @dataclasses.dataclass  # check-dataclass: ignore[kw_only,slots]
+        @dataclasses.dataclass(kw_only=True, slots=True)
         class WithList:
             items: list[int] = dataclasses.field(
                 default_factory=lambda: list(range(20)),
@@ -482,7 +758,7 @@ class TestPprintListDispatch:
     def test_list_no_extra_compact_dispatch(self):
         """With extra_compact=False, parent _pprint_list is used."""
 
-        @dataclasses.dataclass  # check-dataclass: ignore[kw_only,slots]
+        @dataclasses.dataclass(kw_only=True, slots=True)
         class WithList:
             items: list[int] = dataclasses.field(
                 default_factory=lambda: list(range(20)),
@@ -523,8 +799,7 @@ class TestPprintDataclassWithPipes:
             hide_default_values=False,
             width=40,
         )
-        # Should have pipes for multiline values
-        assert "│" in result or "_NestedData" in result
+        assert "│" in result
 
     def test_dataclass_with_pipes_disabled(self):
         """Pipes disabled should produce no pipe characters."""
@@ -609,6 +884,39 @@ def test_format_items_multiline_context_cycle():
     )
     result = printer.pformat(finalized)
     assert "..." in result
+
+
+def _default_items(factory_calls: list[int]) -> list[int]:
+    factory_calls[0] += 1
+    return []
+
+
+def _long_nested_functions(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text())
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    return [
+        f"{node.name}:{node.lineno}"
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and _is_nested_function(node, parents)
+        and node.end_lineno is not None
+        and node.end_lineno - node.lineno + 1 > 3
+    ]
+
+
+def _is_nested_function(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
+    parent = parents.get(node)
+    while parent is not None:
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return True
+        if isinstance(parent, (ast.ClassDef, ast.Module)):
+            return False
+        parent = parents.get(parent)
+    return False
 
 
 if __name__ == "__main__":

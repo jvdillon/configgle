@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pprint import PrettyPrinter
-from typing import IO, Final, Protocol, TypeVar, override
+from typing import IO, Final, Protocol, TypeVar, cast, override
 
 import dataclasses
+import functools
 import io
 import re
+import tokenize
+import types
 import warnings
 
-from configgle.custom_types import Finalizeable
+from configgle.custom_types import DataclassLike, Finalizeable
 from configgle.walk import copy_tree
 
 
@@ -33,6 +35,16 @@ class SupportsWrite(Protocol[_T_contra]):
 _DEFAULT_CONTINUATION_PIPE_THRESHOLD: Final = 50
 
 _SHORT_SEQUENCE_MAX_WIDTH: Final = 40
+
+# One literal for every masked address, on every platform.
+# We used to use:
+#   _MASKED_MEMORY_ADDRESS: Final = "0x" + ("0defaced" * 2)[: len(f"{id(object()):x}")]
+# But since goldens are shared across machines, so this must not depend on the
+# recording host: deriving the width from the local pointer size makes a golden
+# recorded on a 64-bit interpreter unreproducible on a 32-bit one, and sizing
+# it per match leaks the original address's length into the output.
+# Fun fact: 0xdefaced is a prime number.
+_MASKED_MEMORY_ADDRESS: Final = "0xdefacedeface"
 
 
 def pformat(
@@ -67,7 +79,8 @@ def pformat(
       mask_memory_addresses: Replace memory addresses with placeholder.
       extra_compact: Use extra compact formatting.
       continuation_pipe: Lines threshold for continuation pipes (0=always, -1=never).
-      hide_default_values: Omit fields with default values.
+      hide_default_values: Omit fields matching literal defaults. Factory-backed
+        fields remain visible without executing their factories.
       short_sequence_max_width: Max width for single-line sequences.
 
     Returns:
@@ -124,7 +137,8 @@ def pprint(
       mask_memory_addresses: Replace memory addresses with placeholder.
       extra_compact: Use extra compact formatting.
       continuation_pipe: Lines threshold for continuation pipes (0=always, -1=never).
-      hide_default_values: Omit fields with default values.
+      hide_default_values: Omit fields matching literal defaults. Factory-backed
+        fields remain visible without executing their factories.
       short_sequence_max_width: Max width for single-line sequences.
 
     """
@@ -181,20 +195,35 @@ class FigPrinter(PrettyPrinter):
         self._width: int = width
         self._finalize = finalize
         self._mask_memory_addresses = (
-            _MASK_MEMORY_ADDRESSES_FN if mask_memory_addresses else None
+            _mask_memory_addresses if mask_memory_addresses else None
         )
         self._extra_compact = extra_compact
         self._continuation_pipe = continuation_pipe
         self._hide_default_values = hide_default_values
         self._short_sequence_max_width = short_sequence_max_width
+        self._finalized_copies: dict[int, tuple[object, object]] | None = None
 
     @override
     def pprint(self, object: object) -> None:
-        return super().pprint(self._try_to_finalize(object))
+        owns_cache = self._finalized_copies is None
+        if owns_cache:
+            self._finalized_copies = {}
+        try:
+            return super().pprint(self._try_to_finalize(object))
+        finally:
+            if owns_cache:
+                self._finalized_copies = None
 
     @override
     def pformat(self, object: object) -> str:
-        return super().pformat(self._try_to_finalize(object))
+        owns_cache = self._finalized_copies is None
+        if owns_cache:
+            self._finalized_copies = {}
+        try:
+            return super().pformat(self._try_to_finalize(object))
+        finally:
+            if owns_cache:
+                self._finalized_copies = None
 
     @override
     def format(
@@ -204,25 +233,36 @@ class FigPrinter(PrettyPrinter):
         maxlevels: int,
         level: int,
     ) -> tuple[str, bool, bool]:
-        if (
-            self._finalize
-            and callable(getattr(object, "make", None))
-            and callable(getattr(object, "finalize", None))
-            and not getattr(object, "_finalized", False)
-        ):
-            warnings.warn(
-                f"Found potentially unfinalized dataclass: {object}.",
-                stacklevel=2,
-            )
+        object = self._try_to_finalize(object)
         repr_, readable, recursive = super().format(
             object,
             context,
             maxlevels,
             level,
         )
+        repr_ = _qualify_function_reprs(object, repr_)
         if self._mask_memory_addresses is not None:
             repr_ = self._mask_memory_addresses(repr_)
         return repr_, readable, recursive
+
+    @override
+    def _format(
+        self,
+        object: object,
+        stream: SupportsWrite[str],
+        indent: int,
+        allowance: int,
+        context: dict[int, int],
+        level: int,
+    ) -> None:
+        super()._format(
+            self._try_to_finalize(object),
+            stream,
+            indent,
+            allowance,
+            context,
+            level,
+        )
 
     def _try_to_finalize(self, obj: _T) -> _T:
         """Copy the config tree then finalize it for display purposes.
@@ -236,10 +276,23 @@ class FigPrinter(PrettyPrinter):
             and isinstance(obj, Finalizeable)
             and not getattr(obj, "_finalized", False)
         ):
+            cached = (
+                None
+                if self._finalized_copies is None
+                else self._finalized_copies.get(id(obj))
+            )
+            # ``is obj`` guards address reuse: CPython hands a reclaimed id() to
+            # the next allocation, so a bare id() hit can belong to a config that
+            # has since been collected.
+            if cached is not None and cached[0] is obj:
+                return cast(_T, cached[1])
             try:
-                obj = copy_tree(obj).finalize()
-            except Exception as e:  # noqa: BLE001
-                warnings.warn(str(e), stacklevel=2)
+                finalized = copy_tree(obj).finalize()
+                if self._finalized_copies is not None:
+                    self._finalized_copies[id(obj)] = (obj, finalized)
+                obj = finalized
+            except Exception as e:  # noqa: BLE001 -- any finalize failure degrades to printing the unfinalized tree.
+                warnings.warn(f"{type(e).__name__}: {e}", stacklevel=2)
         return obj
 
     def _pprint_dataclass(  # noqa: PLR0917 -- pprint override; CPython dispatches positionally, keyword-only params break it.
@@ -261,7 +314,7 @@ class FigPrinter(PrettyPrinter):
         indent += len(cls_name) + 1
         items = [
             (f.name, getattr(obj, f.name))
-            for f in dataclasses.fields(obj)  # pyright: ignore[reportArgumentType]  # ty: ignore[invalid-argument-type] -- pprint dispatch guarantees a dataclass instance
+            for f in dataclasses.fields(cast(DataclassLike, obj))
             if f.repr
         ]
 
@@ -469,6 +522,83 @@ class FigPrinter(PrettyPrinter):
         )
 
 
+def _qualify_function_reprs(value: object, rendered: str) -> str:
+    """Add module paths to function reprs nested in supported containers."""
+    return _qualify_function_repr(value, rendered, set())
+
+
+def _qualify_function_repr(current: object, text: str, ancestors: set[int]) -> str:
+    """Qualify exact function reprs while traversing one object tree."""
+    if isinstance(current, types.FunctionType):
+        bare = repr(current)
+        qualified = bare.replace("<function ", f"<function {current.__module__}.", 1)
+        return _replace_unquoted_function_repr(text, bare, qualified)
+    identity = id(current)
+    if identity in ancestors:
+        return text
+    ancestors.add(identity)
+    for child in _function_repr_children(current):
+        text = _qualify_function_repr(child, text, ancestors)
+    ancestors.remove(identity)
+    return text
+
+
+def _replace_unquoted_function_repr(text: str, bare: str, qualified: str) -> str:
+    """Replace one exact function repr outside rendered string tokens."""
+    string_spans = _string_token_spans(text)
+    for match in re.finditer(re.escape(bare), text):
+        if not any(
+            match.start() < end and match.end() > start for start, end in string_spans
+        ):
+            return text[: match.start()] + qualified + text[match.end() :]
+    return text
+
+
+def _string_token_spans(text: str) -> list[tuple[int, int]]:
+    """Return absolute spans occupied by Python string tokens."""
+    line_offsets = [0]
+    for line in text.splitlines(keepends=True):
+        line_offsets.append(line_offsets[-1] + len(line))
+    spans = list[tuple[int, int]]()
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(text).readline):
+            if token.type == tokenize.STRING:
+                spans.append(
+                    (
+                        line_offsets[token.start[0] - 1] + token.start[1],
+                        line_offsets[token.end[0] - 1] + token.end[1],
+                    )
+                )
+    except tokenize.TokenError:
+        pass
+    return spans
+
+
+def _function_repr_children(value: object) -> list[object]:
+    """Return children whose rendered function reprs need qualification."""
+    if isinstance(value, functools.partial):
+        children: list[object] = [value.func]
+        children.extend(cast(tuple[object, ...], value.args))
+        children.extend(cast(dict[str, object], value.keywords).values())
+        return children
+    if isinstance(value, dict):
+        return [*value.keys(), *value.values()]
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return list(
+            cast(
+                list[object] | tuple[object, ...] | set[object] | frozenset[object],
+                value,
+            )
+        )
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return [
+            getattr(value, field.name)
+            for field in dataclasses.fields(value)
+            if hasattr(value, field.name)
+        ]
+    return []
+
+
 def _get_level_indents(level: int, indent_per_level: int) -> tuple[int, int]:
     """Return (item_indent, base_indent) for a given nesting level."""
     item_indent = indent_per_level * (level + 1)
@@ -478,15 +608,29 @@ def _get_level_indents(level: int, indent_per_level: int) -> tuple[int, int]:
 
 def _collapse_multiline_value(formatted_value: str, max_width: int) -> str:
     """Collapse multiline value to a single line if short enough."""
-    if "\n" not in formatted_value:
+    if "\n" not in formatted_value or _contains_repeated_string_whitespace(
+        formatted_value
+    ):
         return formatted_value
 
-    oneline = re.sub(r"\s+", " ", formatted_value.replace("\n", ""))
+    oneline = re.sub(r"\s+", " ", formatted_value).strip()
     oneline = oneline.replace("( ", "(").replace(" )", ")")
 
     if len(oneline) <= max_width:
         return oneline
     return formatted_value
+
+
+def _contains_repeated_string_whitespace(value: str) -> bool:
+    """Return whether collapsing whitespace would alter a string token."""
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(value).readline)
+        return any(
+            token.type == tokenize.STRING and re.search(r"\s{2,}", token.string)
+            for token in tokens
+        )
+    except tokenize.TokenError:
+        return True
 
 
 def _replace_char_at_column(line: str, column: int, char: str) -> str:
@@ -531,40 +675,32 @@ def _filter_non_default_items(
     obj: object,
     items: list[tuple[str, object]],
 ) -> list[tuple[str, object]]:
-    """Filter out items whose values match the default-constructed instance."""
-    try:
-        cls = type(obj)
-        default_obj = cls()
-
-        filtered = list[tuple[str, object]]()
-        for name, value in items:
-            default_value = getattr(default_obj, name)
+    """Filter fields equal to side-effect-free, scalar-comparable defaults."""
+    fields = {
+        field.name: field for field in dataclasses.fields(cast(DataclassLike, obj))
+    }
+    filtered = list[tuple[str, object]]()
+    for name, value in items:
+        field = fields[name]
+        if field.default is dataclasses.MISSING:
+            filtered.append((name, value))
+            continue
+        default_value = field.default
+        try:
             if value != default_value:
                 filtered.append((name, value))
-
-        return filtered
-    except Exception:  # noqa: BLE001
-        # If we can't create defaults (e.g., required args), return all items
-        return items
+        except Exception:  # noqa: BLE001 -- a field whose __eq__ raises is shown, not hidden.
+            filtered.append((name, value))
+    return filtered
 
 
-def _make_memory_address_masker() -> Callable[[str], str]:
-    """Replace memory addresses (e.g., ``0x7f...``) with a fixed placeholder.
-
-    Object reprs include addresses that change every run, making string
-    comparisons and snapshot tests brittle. A fixed placeholder gives
-    stable, reproducible output.
-    """
-    n = len(str(lambda: None)[:-1].split(" at 0x")[-1])
-    pattern = re.compile(rf"0x[a-f0-9]{{{n}}}")
-    # Fun fact: 0x0defaced is a prime number.
-    replace = "0x0defaced0defaced"
-    replace = replace[: min(len(replace), 2 + n)]
-
-    def mask_memory_addresses(x: str) -> str:
-        return pattern.sub(replace, x)
-
-    return mask_memory_addresses
-
-
-_MASK_MEMORY_ADDRESSES_FN = _make_memory_address_masker()
+def _mask_memory_addresses(text: str) -> str:
+    """Replace object-repr memory addresses outside string tokens."""
+    string_spans = _string_token_spans(text)
+    for match in reversed(list(re.finditer(r"(?<= at )0x[0-9a-fA-F]+", text))):
+        if any(
+            match.start() < end and match.end() > start for start, end in string_spans
+        ):
+            continue
+        text = text[: match.start()] + _MASKED_MEMORY_ADDRESS + text[match.end() :]
+    return text
