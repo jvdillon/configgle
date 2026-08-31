@@ -62,8 +62,9 @@ in-`finalize` build is fighting the pattern.
    field and let the *dataset's* `__init__` verify it against its own resolved
    `data_dir` (gated) -- never verify, from the model or finalize, a tree you
    don't own.
-7. **`pprint()` is your eyes.** `cfg.pprint(hide_default_values=False)` for the
-   raw tree; `pprint()` for the diff view. Use it to confirm a default (2),
+7. **`pprint()` is your eyes.**
+   `cfg.pprint(finalize=False, hide_default_values=False)` for raw user input;
+   `pprint()` for the finalized diff view. Use it to confirm a default (2),
    inspect a derived value (6), or verify a finalized experiment.
 8. **The delta must be self-evident.** A reader scanning a factory should see
    WHAT CHANGED without computing anything. Read a value off the config
@@ -415,15 +416,48 @@ s = cfg.pformat()  # to string
 - `hide_default_values=True` (default) -- omits fields at their
   default. Pass `hide_default_values=False` for the full picture.
 
-For a full unfiltered snapshot:
+For a full finalized snapshot:
 
 ```python
-cfg.pprint(finalize=False, hide_default_values=False)
+cfg.pprint(hide_default_values=False)
 ```
+
+Pass `finalize=False` only when inspecting raw user input before propagation.
 
 See `help(configgle.pprint)` for the rest of the
 knobs (`indent`, `width`, `depth`, `compact`,
 `mask_memory_addresses`, etc.).
+
+### Pprint golden tests
+
+Use the public Configgle harness when a config's defaults and finalized
+propagation are part of its tested contract:
+
+```python
+from configgle.testing import assert_pprint_golden
+
+
+def test_sandwich_config_pprint() -> None:
+    assert_pprint_golden(
+        test_file=__file__,
+        name="sandwich",
+        config=Sandwich.Config(),
+    )
+```
+
+The harness finalizes the config and forces `hide_default_values=False`, so the
+golden catches inherited-default changes as well as explicit overrides. It
+stores `testdata/<name>.txt` beside the test. After an intentional change, read
+the diff, regenerate, inspect the file, then rerun without regeneration:
+
+```bash
+CONFIGGLE_REGENERATE_GOLDEN=1 uv --quiet run --frozen pytest <test_file>::<test_nodeid>
+uv --quiet run --frozen pytest <test_file>::<test_nodeid>
+```
+
+Import from `configgle.testing`, never through a consumer package's testing
+facade. Do not call `pformat` manually at the callsite; the harness owns the
+full finalized rendering policy.
 
 ## Other Config methods
 

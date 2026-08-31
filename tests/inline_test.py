@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
-from typing import Self, override
+from typing import Self, cast, override
 
 import copy
 import dataclasses
 
 import pytest
 
+from configgle.custom_json import encode_graph
 from configgle.custom_types import Makeable, MutableNamespace
 from configgle.fig import Fig
 from configgle.inline import InlineConfig, PartialConfig
+
+
+def test_inline_config_owns_its_graph_recipe() -> None:
+    config: InlineConfig[str] = InlineConfig(str, 1)
+
+    assert config.__custom_json_inline__() == (str, [1], {})
+    encoded = encode_graph(config)
+    assert isinstance(encoded, dict)
+    assert set(cast(dict[str, object], encoded)) == {"py/inline"}
 
 
 def test_inline_config():
