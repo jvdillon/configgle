@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-# uv sync --all-groups
+# uv sync --all-groups --all-extras --frozen
 
 lint = [
     "codespell>=2.2.4",
@@ -36,12 +36,12 @@ publish = [
     "twine",
 ]
 test = [
-    "nodejs-wheel-binaries>=24.16.0",
     "pytest-timeout>=2.4.0",
     "pytest-xdist>=3.8.0",
     "pytest>=7.0",
-    "cloudpickle",
     "pytest-cov",
+    "nodejs-wheel-binaries>=24.16.0",
+    "cloudpickle",
 ]
 typecheck = [
     "basedpyright>=1.10",
@@ -78,12 +78,12 @@ build-backend = "hatchling.build"
 
 # Tool settings: single source of truth.
 # Preferred location for any tool setting, in order:
-#   pyproject.toml  >  .pre-commit-config.yaml  >  .github/workflows/ci.yml
+#   pyproject.toml  >  .pre-commit-config.yaml  >  .github/workflows/tests.yml
 # Put a setting as high in this chain as the tool allows. Only drop to a lower
 # file when the higher one cannot express it (e.g. a CLI-only flag with no
 # config key). pyproject.toml holds tool config; .pre-commit-config.yaml is the
 # sole source for how hooks run (thread/worker counts, heap caps);
-# .github/workflows/ci.yml only invokes the hooks and must not redefine any
+# .github/workflows/tests.yml only invokes the hooks and must not redefine any
 # of these.
 
 [tool.hatch.build.targets.wheel]
@@ -138,6 +138,7 @@ markers = [
     "gpu_jax_cuda: requires JAX CUDA execution",
     "gpu_nvidia: requires NVIDIA GPU hardware",
     "gpu_torch_cuda: requires torch CUDA execution",
+    "gpu_torch_mps: requires torch MPS execution",
     "gpu_triton: requires Triton kernels",
     "network_anthropic: reaches Anthropic over the network",
     "network_duckduckgo: reaches DuckDuckGo over the network",
@@ -146,6 +147,7 @@ markers = [
     "network_github: reaches GitHub over the network",
     "network_huggingface: reaches Hugging Face over the network",
     "network_kaggle: reaches Kaggle over the network",
+    "network_localhost: opens a loopback network socket",
     "network_openai: reaches OpenAI over the network",
     "network_openml: reaches OpenML over the network",
     "network_openreview: reaches OpenReview over the network",
@@ -427,6 +429,7 @@ section-order = [
 typeCheckingMode = "recommended"
 failOnWarnings = true  # Warnings fail the check (basedpyright default; pinned explicitly).
 useLibraryCodeForTypes = false
+extraPaths = ["typings"]
 exclude = [
     "**/.venv/",
     "**/.venv-ci312/",
@@ -528,6 +531,10 @@ package = true
 environments = [
     "sys_platform == 'linux'",
     "sys_platform == 'darwin'",
+]
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
 [tool.uv.pip]
